@@ -28,7 +28,6 @@ export function searchQuery(state) {
   if (state.hasImages === "true" || state.hasImages === "false") {
     params.set("has_images", state.hasImages);
   }
-  if (state.includeTransactional) params.set("include_transactional", "true");
   if (state.limit) params.set("limit", String(state.limit));
   if (state.offset) params.set("offset", String(state.offset));
   return params.toString();

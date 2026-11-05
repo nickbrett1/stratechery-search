@@ -57,7 +57,6 @@ class SearchParams:
     kinds: tuple[str, ...] = ()
     senders: tuple[str, ...] = ()
     has_images: bool | None = None
-    include_transactional: bool = False
     limit: int = DEFAULT_LIMIT
     offset: int = 0
 
@@ -117,10 +116,6 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
     if offset < 0:
         raise ApiError(400, "bad_request", "offset must be >= 0", {"offset": offset})
 
-    include_transactional = parse_bool(
-        (query.get("include_transactional") or [None])[0], name="include_transactional"
-    )
-
     return SearchParams(
         q=raw_q,
         start=_check_date((query.get("from") or [None])[0], "from"),
@@ -136,7 +131,6 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
             if value
         ),
         has_images=parse_bool((query.get("has_images") or [None])[0], name="has_images"),
-        include_transactional=bool(include_transactional),
         limit=limit,
         offset=offset,
     )
@@ -231,8 +225,11 @@ def _filters(params: SearchParams) -> tuple[str, list[Any]]:
         values.extend(params.senders)
     if params.has_images is not None:
         clauses.append("a.n_images > 0" if params.has_images else "a.n_images = 0")
-    if not params.include_transactional:
-        clauses.append("a.is_transactional = 0")
+    # Transaction mail (access codes, receipts, renewals) is in the corpus but is
+    # never searchable: there is no query for which it is the right answer, so
+    # this is a clause rather than a parameter. api.stats still counts it, so the
+    # 1,691 → 1,647 gap on the corpus page stays explained.
+    clauses.append("a.is_transactional = 0")
     return (" AND ".join(clauses), values)
 
 

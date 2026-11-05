@@ -55,7 +55,7 @@
     <div class="card">
       <div class="t micro">transactional</div>
       <div class="v num">{data.transactional}</div>
-      <div class="s">excluded from search</div>
+      <div class="s">access codes, receipts, renewals — never searched</div>
     </div>
   </div>
 

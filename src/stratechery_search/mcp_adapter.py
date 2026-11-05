@@ -32,8 +32,7 @@ TOOLS = [
         "description": (
             "Full-text search over the Stratechery archive (2016→now). Returns ranked "
             "passages with the article they belong to, plus the total hit count. "
-            "Transaction mail (access codes, receipts, renewals) is excluded unless "
-            "include_transactional is set."
+            "Transaction mail (access codes, receipts, renewals) is not searchable."
         ),
         "inputSchema": {
             "type": "object",
@@ -46,10 +45,6 @@ TOOLS = [
                     "description": "one of update, daily, weekly, interview, other",
                 },
                 "limit": {"type": "integer", "description": "1–100, default 20"},
-                "include_transactional": {
-                    "type": "boolean",
-                    "description": "include access codes, receipts and renewal notices",
-                },
             },
             "required": ["q"],
         },
@@ -111,7 +106,6 @@ def search_corpus(
     end: str | None = None,
     kind: str | None = None,
     limit: int = 20,
-    include_transactional: bool = False,
 ) -> dict:
     params: dict[str, str] = {"q": q, "limit": str(limit)}
     if start:
@@ -120,8 +114,6 @@ def search_corpus(
         params["to"] = end
     if kind:
         params["kind"] = kind
-    if include_transactional:
-        params["include_transactional"] = "true"
     body = _get(base_url, "/search", params)
     return {
         "total": body["total"],
@@ -144,7 +136,6 @@ def call_tool(name: str, arguments: dict, base_url: str) -> dict:
             end=arguments.get("to"),
             kind=arguments.get("kind"),
             limit=int(arguments.get("limit", 20)),
-            include_transactional=bool(arguments.get("include_transactional", False)),
         )
     if name == "get_article":
         return get_article(base_url, arguments["message_id"])

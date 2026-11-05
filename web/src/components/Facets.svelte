@@ -102,21 +102,6 @@
       {/each}
     </ul>
   </section>
-
-  <section>
-    <label class="checkbox">
-      <input
-        type="checkbox"
-        checked={query.includeTransactional}
-        onchange={(event) =>
-          onchange({ ...query, offset: 0, includeTransactional: event.currentTarget.checked })}
-      />
-      <span>include transactional mail</span>
-    </label>
-    <p class="hint">
-      Off by default: 44 of 1,691 messages are access codes, receipts and renewals.
-    </p>
-  </section>
 </aside>
 
 <style>
@@ -222,13 +207,6 @@
   }
   .hint {
     margin: 4px 0 0;
-  }
-  .checkbox {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    color: var(--ink-dim);
-    cursor: pointer;
   }
   @media (max-width: 760px) {
     .facets {

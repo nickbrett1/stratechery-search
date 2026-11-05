@@ -77,13 +77,23 @@ def test_search_shape_is_the_contract(service):
     assert set(facets["has_images"]) == {"true", "false"}
 
 
-def test_transactional_is_excluded_by_default(service):
+def test_transactional_mail_is_never_searchable(service):
+    # Access codes, receipts and renewals are in the corpus — api.stats counts
+    # them, so the articles/searchable gap on the corpus page stays explained —
+    # but there is no query for which they are the right answer. That makes the
+    # exclusion a clause in the WHERE, not a parameter, and the old
+    # include_transactional escape hatch is gone: passing it must change
+    # nothing rather than quietly bring the mails back.
     _, body = get(f"{service}/search?q=access%20code")
     assert body["total"] == 0
 
-    _, included = get(f"{service}/search?q=access%20code&include_transactional=true")
-    assert included["total"] >= 1
-    assert included["results"][0]["message_id"] == 30564
+    _, ignored = get(f"{service}/search?q=access%20code&include_transactional=true")
+    assert ignored["total"] == 0
+    assert ignored["results"] == []
+
+    _, stats = get(f"{service}/stats")
+    assert stats["transactional"] == 1
+    assert stats["searchable_articles"] == stats["articles"] - 1
 
 
 def test_filters_and_facets_narrow_together(service):
