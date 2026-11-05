@@ -39,6 +39,14 @@ services:
       # widget -> 127.0.0.1, because Homepage is host-networked on ryzen.
       - "homepage.group=Data & Markets"
       - "homepage.name=Stratechery Search"
+      # Homepage orders a group by `weight` first (names only break ties), and the
+      # file-based entries get 100, 200, 300 ... in the order services.yaml lists them.
+      # A label-derived service defaults to weight 0, which puts it at the TOP of the
+      # group — the same bug that floats data-sourcing-agent and "gate grader" above
+      # n8n. 1100 sorts it after Potato (1000), which is also where it belongs
+      # alphabetically: P before S, and nothing in this group starts with T-Z yet.
+      # Re-check this number when a tile starting T–Z joins Data & Markets.
+      - "homepage.weight=1100"
       - "homepage.icon=mdi-text-search"
       - "homepage.href=http://ryzen.tail86fd19.ts.net/"
       - "homepage.description=full-text search over 1,691 Stratechery articles, 2016 to now"
