@@ -35,3 +35,6 @@ venv/
 
 
 
+
+# Local sample bundle fetched from the archive host (never committed)
+.samples/
