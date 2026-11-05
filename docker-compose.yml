@@ -33,10 +33,18 @@ services:
       PORT: ${PORT:-8080}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      # Homepage (gethomepage) reads these straight off the container: the
+      # dashboard entry is the labels, so they are the thing to keep true.
+      # browser-facing href -> the tailnet name (the port is loopback-only);
+      # widget -> 127.0.0.1, because Homepage is host-networked on ryzen.
       - "homepage.group=Services"
-      - "homepage.name=stratechery-search"
-      - "homepage.href=http://nas.local:8091/"
+      - "homepage.name=Stratechery Search"
+      - "homepage.icon=mdi-text-search"
+      - "homepage.href=http://ryzen.tail86fd19.ts.net/"
+      - "homepage.description=full-text search over 1,691 Stratechery articles, 2016 to now"
       - "homepage.widget.type=customapi"
-      - "homepage.widget.url=http://localhost:8091/livez"
-      - "homepage.widget.mappings[0].field=status"
-      - "homepage.widget.mappings[0].label=Status"
+      - "homepage.widget.url=http://127.0.0.1:8091/stats"
+      - "homepage.widget.mappings[0].field=articles"
+      - "homepage.widget.mappings[0].label=articles"
+      - "homepage.widget.mappings[1].field=chunks"
+      - "homepage.widget.mappings[1].label=passages"
