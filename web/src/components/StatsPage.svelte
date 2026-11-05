@@ -24,157 +24,199 @@
 </script>
 
 {#if error}
-  <p class="error">{error.message}</p>
+  <p class="notice bad">{error.message}</p>
 {:else if !data}
-  <p class="meta">Loading…</p>
+  <p class="hint">Loading…</p>
 {:else}
   <h1>The corpus</h1>
-  <ul class="totals">
-    <li><strong>{data.articles.toLocaleString()}</strong> articles</li>
-    <li><strong>{data.searchable_articles.toLocaleString()}</strong> searchable</li>
-    <li><strong>{data.transactional}</strong> transactional</li>
-    <li><strong>{data.chunks.toLocaleString()}</strong> passages</li>
-    <li>{data.first.slice(0, 10)} → {data.last.slice(0, 10)}</li>
-  </ul>
+  <p class="hint sub">
+    {data.first.slice(0, 10)} → {data.last.slice(0, 10)} · flattener {data.index.flattener_version} ·
+    chunker {data.index.chunker_version} · built {data.index.built_at}
+  </p>
+
+  <!-- The house stat card: micro-label, big tabular figure, footnote. Same shape
+       as a deepseek-balance .card, so the two read as one product family. -->
+  <div class="topcards">
+    <div class="card">
+      <div class="t micro">articles</div>
+      <div class="v num">{data.articles.toLocaleString()}</div>
+      <div class="s num">{data.searchable_articles.toLocaleString()} searchable</div>
+    </div>
+    <div class="card">
+      <div class="t micro">passages</div>
+      <div class="v num">{data.chunks.toLocaleString()}</div>
+      <div class="s">indexed in FTS5</div>
+    </div>
+    <div class="card">
+      <div class="t micro">images</div>
+      <div class="v num">{data.images.distinct_assets.toLocaleString()}</div>
+      <div class="s num">{data.images.articles_with_images.toLocaleString()} articles</div>
+    </div>
+    <div class="card">
+      <div class="t micro">transactional</div>
+      <div class="v num">{data.transactional}</div>
+      <div class="s">excluded from search</div>
+    </div>
+  </div>
 
   <!-- notes[] is rendered next to the chart on purpose: a bar chart that could
        imply 2017 was a quiet year must be contradicted in words, not in a memo. -->
   {#each data.notes as note (note.code)}
-    <p class="note"><strong>{note.year}</strong> — {note.message}</p>
+    <p class="notice warn"><b>{note.year}</b> — {note.message}</p>
   {/each}
 
-  <section>
-    <h2>Articles per year</h2>
+  <div class="card chart">
+    <h3>Articles per year</h3>
+    <div class="note hint">One bar per published year; the gap in 2017 is a sampling artefact.</div>
     <div class="years">
       {#each data.by_year as bucket (bucket.year)}
         <div class="row">
-          <span class="label">{bucket.year}</span>
-          <span class="bar" style="width: {Math.round((bucket.articles / maxYear) * 100)}%"
-          ></span>
-          <span class="count">{bucket.articles}</span>
+          <span class="label num">{bucket.year}</span>
+          <span class="track"
+            ><span class="bar" style="width: {Math.round((bucket.articles / maxYear) * 100)}%"
+            ></span></span
+          >
+          <span class="count num">{bucket.articles}</span>
         </div>
       {/each}
     </div>
-  </section>
+  </div>
 
   <section class="columns">
-    <div>
-      <h2>By kind</h2>
+    <div class="card">
+      <h3>By kind</h3>
       <ul>
         {#each data.by_kind as bucket (bucket.kind)}
-          <li>{bucket.kind} <span class="count">{bucket.articles}</span></li>
+          <li><span>{bucket.kind}</span><span class="count num">{bucket.articles}</span></li>
         {/each}
       </ul>
     </div>
-    <div>
-      <h2>By sender</h2>
+    <div class="card">
+      <h3>By sender</h3>
       <ul>
         {#each data.by_sender as bucket (bucket.sender)}
-          <li>{bucket.sender || "(unknown)"} <span class="count">{bucket.articles}</span></li>
+          <li>
+            <span>{bucket.sender || "(unknown)"}</span
+            ><span class="count num">{bucket.articles}</span>
+          </li>
         {/each}
-      </ul>
-    </div>
-    <div>
-      <h2>Images</h2>
-      <ul>
-        <li>{data.images.distinct_assets.toLocaleString()} distinct assets</li>
-        <li>{data.images.articles_with_images.toLocaleString()} articles with images</li>
-      </ul>
-      <h2>Index</h2>
-      <ul>
-        <li>flattener {data.index.flattener_version}</li>
-        <li>chunker {data.index.chunker_version}</li>
-        <li>built {data.index.built_at}</li>
       </ul>
     </div>
   </section>
 
-  <p class="meta"><a href="/">← search</a> · <a href="/healthz">/healthz</a></p>
+  <p class="hint footer">
+    <a href="/">← search</a> · <a href="/healthz">/healthz</a> · <a href="/stats">/stats</a>
+  </p>
 {/if}
 
 <style>
   h1 {
-    font-size: 1.3rem;
-    margin: 0.2rem 0 0.8rem;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+    color: #fff;
   }
-  h2 {
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #6b6b6b;
-    margin: 1.2rem 0 0.4rem;
+  .sub {
+    margin: 0 0 14px;
   }
-  .totals {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.2rem;
-    list-style: none;
-    padding: 0;
-    font-size: 0.85rem;
+  .topcards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
   }
-  .totals strong {
-    font-size: 1.05rem;
+  .topcards .card {
+    padding: 8px 10px;
+  }
+  .topcards .v {
+    font-size: 18px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .topcards .s {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-top: 2px;
+  }
+  .chart {
+    padding: 10px 12px 8px;
+    margin: 12px 0;
+  }
+  .chart h3,
+  .columns h3 {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    color: #f1f5f9;
+  }
+  .chart .note {
+    margin: 0 0 8px;
   }
   .years {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-width: 32rem;
+    max-width: 36rem;
   }
   .row {
     display: grid;
-    grid-template-columns: 3rem 1fr 3rem;
+    grid-template-columns: 2.6rem 1fr 2.4rem;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.8rem;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .label {
+    color: var(--ink-muted);
+  }
+  .track {
+    height: 9px;
+    background: var(--bg-sunken);
+    border-radius: 2px;
+    overflow: hidden;
   }
   .bar {
     display: block;
-    height: 0.75rem;
-    background: #b9cdf0;
+    height: 100%;
+    background: rgba(125, 211, 252, 0.55);
     min-width: 1px;
   }
   .count {
     text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: #6b6b6b;
-    font-size: 0.78rem;
+    color: var(--ink-dim);
   }
   .columns {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .columns .card {
+    padding: 10px 12px;
   }
   .columns ul {
     list-style: none;
     padding: 0;
-    margin: 0;
-    font-size: 0.82rem;
+    margin: 6px 0 0;
+    font-size: 12px;
   }
   .columns li {
     display: flex;
     justify-content: space-between;
-    gap: 1rem;
-    max-width: 16rem;
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-dim);
   }
-  .note {
-    background: #fbf6dc;
-    border-left: 3px solid #d8c34a;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-    max-width: 34rem;
+  .columns li:last-child {
+    border-bottom: 0;
   }
-  .error {
-    background: #fdeaea;
-    border-left: 3px solid #c0392b;
-    padding: 0.5rem 0.7rem;
+  .columns .count {
+    color: var(--ink-muted);
   }
-  .meta {
-    color: #6b6b6b;
-    font-size: 0.8rem;
-    margin-top: 1.5rem;
+  .notice {
+    margin: 10px 0;
   }
-  a {
-    color: #1a3d7c;
+  .footer {
+    margin-top: 18px;
   }
 </style>

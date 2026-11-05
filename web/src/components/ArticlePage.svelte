@@ -36,24 +36,28 @@
 </script>
 
 {#if error}
-  <p class="error">{error.message}</p>
+  <p class="notice bad">{error.message}</p>
 {:else if !data}
-  <p class="meta">Loading…</p>
+  <p class="hint">Loading…</p>
 {:else}
-  <header class="head">
-    <p class="crumbs">
-      <a href="/">← search</a>
-      <span class="kind">{data.kind}</span>
-      <span>{data.sent_at.slice(0, 10)}</span>
-      {#if data.is_transactional}<span class="badge">transactional</span>{/if}
-    </p>
+  <a class="back" href="/">← search</a>
+
+  <header class="card head">
+    <div class="crumbs">
+      <span class="pill info kind">{data.kind}</span>
+      <span class="num date">{data.sent_at.slice(0, 10)}</span>
+      {#if data.is_transactional}<span class="pill warn">transactional</span>{/if}
+    </div>
     <h1>{data.subject}</h1>
     <dl class="facts">
-      <div><dt>from</dt><dd>{data.from_header}</dd></div>
-      <div><dt>words</dt><dd>{data.words.toLocaleString()}</dd></div>
-      <div><dt>chars</dt><dd>{data.chars.toLocaleString()}</dd></div>
-      <div><dt>chunks</dt><dd>{data.chunks.length}</dd></div>
-      <div><dt>est tokens</dt><dd>{data.est_tokens.toLocaleString()} <small>(chars/4)</small></dd></div>
+      <div><dt class="micro">from</dt><dd>{data.from_header}</dd></div>
+      <div><dt class="micro">words</dt><dd class="num">{data.words.toLocaleString()}</dd></div>
+      <div><dt class="micro">chars</dt><dd class="num">{data.chars.toLocaleString()}</dd></div>
+      <div><dt class="micro">passages</dt><dd class="num">{data.chunks.length}</dd></div>
+      <div>
+        <dt class="micro">est tokens</dt>
+        <dd class="num">{data.est_tokens.toLocaleString()} <span class="hint">chars/4</span></dd>
+      </div>
     </dl>
   </header>
 
@@ -64,7 +68,7 @@
           <img src={image.href} alt="article image {index + 1}" loading="lazy" />
         {:else}
           <!-- The 2 url-only refs: never fabricate an asset path. -->
-          <a class="unmirrored" href={image.url_path} rel="noopener noreferrer" target="_blank">
+          <a class="unmirrored num" href={image.url_path} rel="noopener noreferrer" target="_blank">
             image {index + 1} — not mirrored, open at source
           </a>
         {/if}
@@ -86,87 +90,108 @@
 {/if}
 
 <style>
-  .head h1 {
-    font-size: 1.35rem;
-    line-height: 1.25;
-    margin: 0.3rem 0 0.6rem;
+  .back {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-bottom: 10px;
+  }
+  .back:hover {
+    color: var(--accent);
+  }
+  .head {
+    padding: 12px 14px;
+    margin-bottom: 14px;
   }
   .crumbs {
     display: flex;
-    gap: 0.7rem;
+    gap: 8px;
     align-items: center;
-    font-size: 0.8rem;
-    color: #6b6b6b;
-  }
-  .crumbs a {
-    color: #1a3d7c;
+    margin-bottom: 6px;
   }
   .kind {
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-size: 0.68rem;
-    background: #eef1f6;
-    padding: 1px 5px;
-    border-radius: 3px;
   }
-  .badge {
-    background: #fbf6dc;
-    border: 1px solid #d8c34a;
-    border-radius: 3px;
-    padding: 0 4px;
+  .date {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .head h1 {
+    font-size: 20px;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+    color: #fff;
+    max-width: 44rem;
   }
   .facts {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    font-size: 0.78rem;
-    margin: 0 0 1rem;
+    gap: 6px 18px;
+    margin: 0;
+    font-size: 11.5px;
   }
   .facts div {
     display: flex;
-    gap: 0.35rem;
+    gap: 6px;
+    align-items: baseline;
   }
-  dt {
-    color: #6b6b6b;
-  }
-  dd {
+  .facts dt {
     margin: 0;
-    font-variant-numeric: tabular-nums;
+  }
+  .facts dd {
+    margin: 0;
+    color: var(--ink-dim);
   }
   .images {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: 6px;
+    margin-bottom: 14px;
   }
   .images img {
-    max-height: 90px;
-    border: 1px solid #e6e6e6;
-    border-radius: 3px;
+    max-height: 96px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
   }
   .unmirrored {
-    font-size: 0.75rem;
-    color: #6b6b6b;
-    border: 1px dashed #c9cfda;
-    padding: 0.3rem 0.5rem;
-    border-radius: 3px;
+    font-size: 11px;
+    color: var(--ink-muted);
+    border: 1px dashed var(--line-strong);
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
   }
+  .unmirrored:hover {
+    color: var(--accent);
+    border-color: rgba(125, 211, 252, 0.4);
+    text-decoration: none;
+  }
+  /* Reading column: 15px is a size up from the 13px UI text on purpose — this
+     page is read, not scanned, and the whole point of the reader is the prose. */
   .text {
-    max-width: 44rem;
-    line-height: 1.62;
+    max-width: 46rem;
+    font-size: 14.5px;
+    line-height: 1.68;
+    color: var(--ink-dim);
   }
   .text p {
-    margin: 0 0 0.9rem;
+    margin: 0 0 0.85rem;
   }
   .text p:target {
-    background: #fff8d0;
+    background: var(--mark-bg);
+    color: var(--ink);
+    box-shadow: -6px 0 0 var(--mark-bg), 6px 0 0 var(--mark-bg);
+    border-radius: 2px;
   }
-  .error {
-    background: #fdeaea;
-    border-left: 3px solid #c0392b;
-    padding: 0.5rem 0.7rem;
-  }
-  .meta {
-    color: #6b6b6b;
+  @media (max-width: 600px) {
+    .head h1 {
+      font-size: 17px;
+    }
+    .text {
+      font-size: 14px;
+    }
   }
 </style>

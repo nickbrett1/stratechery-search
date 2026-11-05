@@ -142,11 +142,16 @@ def corpus(tmp_path, monkeypatch):
 @pytest.fixture()
 def service(corpus):
     archive, _derived, index_path = corpus
+    dist = archive.parent / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
+    (dist / "index.html").write_text(
+        '<!doctype html><html><body><div id="app"></div></body></html>', encoding="utf-8"
+    )
     config = Config(
         port=0,
         index_path=index_path,
         archive_root=archive,
-        static_dir=archive.parent / "dist",
+        static_dir=dist,
         vocab_path=None,
     )
     server = Server(("127.0.0.1", 0), Handler)

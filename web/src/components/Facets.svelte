@@ -30,7 +30,7 @@
 
 <aside class="facets">
   <section>
-    <h2>Year</h2>
+    <h2 class="section-title">Year</h2>
     <div class="years">
       {#each facets?.by_year || [] as bucket (bucket.year)}
         <button
@@ -39,17 +39,16 @@
           title="{bucket.articles} articles, {bucket.count} passages"
           onclick={() => pickYear(bucket.year)}
         >
-          <span class="bar" style="width: {Math.round((bucket.count / maxYear) * 100)}%"
-          ></span>
-          <span class="label">{bucket.year}</span>
-          <span class="count">{bucket.count}</span>
+          <span class="bar" style="width: {Math.round((bucket.count / maxYear) * 100)}%"></span>
+          <span class="label num">{bucket.year}</span>
+          <span class="count num">{bucket.count}</span>
         </button>
       {/each}
     </div>
   </section>
 
   <section>
-    <h2>Kind</h2>
+    <h2 class="section-title">Kind</h2>
     <ul class="toggles">
       {#each facets?.by_kind || [] as bucket (bucket.kind)}
         <li>
@@ -58,7 +57,8 @@
             class:active={query.kind.includes(bucket.kind)}
             onclick={() => onchange({ ...query, offset: 0, kind: toggle(query.kind, bucket.kind) })}
           >
-            {bucket.kind} <span class="count">{bucket.count}</span>
+            <span>{bucket.kind}</span>
+            <span class="count num">{bucket.count}</span>
           </button>
         </li>
       {/each}
@@ -67,7 +67,7 @@
   </section>
 
   <section>
-    <h2>Sender</h2>
+    <h2 class="section-title">Sender</h2>
     <ul class="toggles">
       {#each facets?.by_sender || [] as bucket (bucket.sender)}
         <li>
@@ -76,7 +76,8 @@
             class:active={query.sender.includes(bucket.sender)}
             onclick={() => onchange({ ...query, offset: 0, sender: toggle(query.sender, bucket.sender) })}
           >
-            {bucket.sender || "(unknown)"} <span class="count">{bucket.count}</span>
+            <span>{bucket.sender || "(unknown)"}</span>
+            <span class="count num">{bucket.count}</span>
           </button>
         </li>
       {/each}
@@ -84,7 +85,7 @@
   </section>
 
   <section>
-    <h2>Images</h2>
+    <h2 class="section-title">Images</h2>
     <ul class="toggles">
       {#each [["true", "with images"], ["false", "text only"]] as [value, label] (value)}
         <li>
@@ -94,7 +95,8 @@
             onclick={() =>
               onchange({ ...query, offset: 0, hasImages: query.hasImages === value ? "" : value })}
           >
-            {label} <span class="count">{facets?.has_images?.[value] ?? 0}</span>
+            <span>{label}</span>
+            <span class="count num">{facets?.has_images?.[value] ?? 0}</span>
           </button>
         </li>
       {/each}
@@ -109,7 +111,7 @@
         onchange={(event) =>
           onchange({ ...query, offset: 0, includeTransactional: event.currentTarget.checked })}
       />
-      include transactional mail
+      <span>include transactional mail</span>
     </label>
     <p class="hint">
       Off by default: 44 of 1,691 messages are access codes, receipts and renewals.
@@ -119,17 +121,18 @@
 
 <style>
   .facets {
+    position: sticky;
+    top: 56px;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    font-size: 0.85rem;
+    gap: 4px;
+    font-size: 12px;
   }
-  h2 {
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #6b6b6b;
-    margin: 0 0 0.4rem;
+  section {
+    margin-bottom: 10px;
+  }
+  h2.section-title {
+    margin: 0 0 5px;
   }
   .years {
     display: flex;
@@ -141,21 +144,32 @@
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
-    padding: 1px 4px;
-    border: 0;
+    gap: 6px;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
     background: none;
+    font: inherit;
+    color: var(--ink-dim);
     cursor: pointer;
     text-align: left;
-    font: inherit;
+  }
+  .years button:hover {
+    border-color: var(--line);
+    background: var(--bg-hover);
   }
   .bar {
     position: absolute;
-    inset: 0 auto 0 0;
-    background: #e4e9f2;
+    inset: 2px auto 2px 2px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.22);
     z-index: 0;
   }
   .years button.active .bar {
-    background: #b9cdf0;
+    background: rgba(125, 211, 252, 0.4);
+  }
+  .years button.active {
+    color: #fff;
   }
   .label,
   .count {
@@ -163,8 +177,11 @@
     z-index: 1;
   }
   .count {
-    color: #6b6b6b;
-    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+    font-size: 11px;
+  }
+  .years button.active .count {
+    color: var(--ink);
   }
   ul.toggles {
     list-style: none;
@@ -178,25 +195,46 @@
     width: 100%;
     display: flex;
     justify-content: space-between;
-    gap: 0.5rem;
-    border: 0;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
     background: none;
-    padding: 2px 4px;
+    padding: 2px 6px;
     font: inherit;
+    color: var(--ink-dim);
     cursor: pointer;
     text-align: left;
   }
+  ul.toggles button:hover {
+    border-color: var(--line);
+    background: var(--bg-hover);
+  }
   ul.toggles button.active {
-    background: #b9cdf0;
+    border-color: rgba(125, 211, 252, 0.4);
+    background: var(--accent-soft);
+    color: #fff;
+  }
+  .count {
+    color: var(--ink-faint);
+  }
+  ul.toggles button.active .count {
+    color: var(--accent);
   }
   .hint {
-    margin: 0.35rem 0 0;
-    color: #6b6b6b;
-    font-size: 0.75rem;
+    margin: 4px 0 0;
   }
   .checkbox {
     display: flex;
-    gap: 0.4rem;
+    gap: 6px;
     align-items: center;
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  @media (max-width: 760px) {
+    .facets {
+      position: static;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
   }
 </style>

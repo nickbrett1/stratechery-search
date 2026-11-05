@@ -34,27 +34,28 @@
 
 <header class="top">
   <a class="brand" href="/" onclick={(event) => { event.preventDefault(); go("/"); }}>
-    Stratechery <span>search</span>
+    stratechery<span class="sep">/</span><b>search</b>
   </a>
-  <nav>
-    <a
-      href="/"
-      class:active={path === "/"}
-      onclick={(event) => { event.preventDefault(); go("/"); }}>search</a
+  <nav class="seg">
+    <button
+      class:on={path === "/"}
+      type="button"
+      onclick={() => go("/")}
+      aria-current={path === "/" ? "page" : undefined}>search</button
     >
-    <a
-      href="/stats"
-      class:active={path === "/stats"}
-      onclick={(event) => { event.preventDefault(); go("/stats"); }}>corpus</a
+    <button
+      class:on={path === "/stats"}
+      type="button"
+      onclick={() => go("/stats")}
+      aria-current={path === "/stats" ? "page" : undefined}>corpus</button
     >
   </nav>
 </header>
 
 <noscript>
-  <p class="noscript">
-    This UI needs JavaScript. The data is also plain JSON: <a href="/stats">/stats</a>,
-    <a href="/healthz">/healthz</a>, and <code>/search?q=…</code>.
-  </p>
+  <p class="notice">This UI needs JavaScript. The data is also plain JSON: <a href="/stats"
+      >/stats</a
+    >, <a href="/healthz">/healthz</a>, and <code>/search?q=…</code>.</p>
 </noscript>
 
 <main>
@@ -68,57 +69,51 @@
 </main>
 
 <style>
-  :global(body) {
-    margin: 0;
-    font-family:
-      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: #1c1c1c;
-    background: #fdfdfc;
-  }
-  :global(a) {
-    color: #1a3d7c;
-  }
   .top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.9rem 1.5rem;
-    border-bottom: 1px solid #e6e6e6;
+    padding: 10px 18px;
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
   }
   .brand {
-    font-weight: 700;
-    text-decoration: none;
-    color: #1c1c1c;
+    color: var(--ink-dim);
+    font-size: 13px;
+    font-weight: 500;
     letter-spacing: -0.01em;
-  }
-  .brand span {
-    font-weight: 400;
-    color: #6b6b6b;
-  }
-  nav {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.85rem;
-  }
-  nav a {
     text-decoration: none;
-    color: #6b6b6b;
-    padding-bottom: 2px;
   }
-  nav a.active {
-    color: #1c1c1c;
-    border-bottom: 2px solid #1a3d7c;
+  .brand b {
+    color: #fff;
+    font-weight: 600;
+  }
+  .brand .sep {
+    color: var(--ink-faint);
+    margin: 0 1px;
+  }
+  .brand:hover {
+    text-decoration: none;
   }
   main {
-    padding: 1.2rem 1.5rem 3rem;
     max-width: 68rem;
     margin: 0 auto;
+    padding: 18px 18px 64px;
   }
-  .noscript {
-    margin: 0;
-    padding: 0.6rem 1.5rem;
-    background: #fdeaea;
-    font-size: 0.85rem;
+  .notice {
+    margin: 14px 18px 0;
+  }
+  @media (max-width: 600px) {
+    .top {
+      padding: 8px 12px;
+    }
+    main {
+      padding: 12px 12px 48px;
+    }
   }
 </style>

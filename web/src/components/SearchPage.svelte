@@ -63,22 +63,24 @@
     placeholder="Search 1,691 Stratechery articles — aggregation theory, smiling curve…"
     aria-label="Search the corpus"
   />
-  <button type="submit">Search</button>
+  <button class="btn primary" type="submit">Search</button>
 </form>
 
 {#if response?.query?.expansions?.length}
-  <p class="rewrite">
-    Matched via vocabulary:
+  <p class="notice info">
+    <span class="micro">Matched via vocabulary</span>
     {#each response.query.expansions as expansion (expansion.matched)}
-      <strong>{expansion.matched}</strong> → {expansion.canonical}
-      ({expansion.aliases.join(", ")})
+      <span class="expansion">
+        <b>{expansion.matched}</b> → {expansion.canonical}
+        <span class="hint">({expansion.aliases.join(", ")})</span>
+      </span>
     {/each}
     <span class="hint">Not a related-concept graph — phase 1 has none.</span>
   </p>
 {/if}
 
 {#if error}
-  <p class="error">
+  <p class="notice bad">
     {error.message}
     {#if error.status === 503}
       The index is not built yet; <code>/healthz</code> reports the reason.
@@ -89,17 +91,20 @@
 <div class="layout">
   <section class="results" class:loading>
     {#if response}
-      <p class="meta">
-        {response.total.toLocaleString()} passages · showing {pageStart}–{pageEnd} ·
-        {response.took_ms} ms
-      </p>
-      {#each response.results as result (result.chunk_id)}
-        <ResultCard {result} />
-      {/each}
+      <div class="tally">
+        <span><b class="num">{response.total.toLocaleString()}</b> passages</span>
+        <span class="hint num">showing {pageStart}–{pageEnd}</span>
+        <span class="pill info num">{response.took_ms} ms</span>
+      </div>
+      <div class="cards">
+        {#each response.results as result (result.chunk_id)}
+          <ResultCard {result} />
+        {/each}
+      </div>
       {#if response.results.length === 0}
-        <p class="empty">No passages match. Try fewer words.</p>
+        <p class="notice">No passages match. Try fewer words.</p>
       {/if}
-      <nav class="pager">
+      <nav class="seg pager">
         <button
           type="button"
           disabled={!hasPrev}
@@ -116,7 +121,7 @@
         </button>
       </nav>
     {:else if !query.q}
-      <p class="empty">Type a query. Facets appear once there are results to facet.</p>
+      <p class="notice">Type a query. Facets appear once there are results to facet.</p>
     {/if}
   </section>
 
@@ -126,71 +131,63 @@
 <style>
   .bar {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.8rem;
+    gap: 8px;
+    margin-bottom: 14px;
   }
   .bar input {
     flex: 1;
-    padding: 0.55rem 0.7rem;
-    border: 1px solid #c9cfda;
-    border-radius: 4px;
-    font-size: 1rem;
+    min-width: 0;
+    font-size: 13.5px;
+    padding: 8px 11px;
   }
-  .bar button {
-    padding: 0 1rem;
-    border: 0;
-    border-radius: 4px;
-    background: #1a3d7c;
-    color: #fff;
-    font-size: 0.95rem;
-    cursor: pointer;
+  .bar .btn {
+    padding: 0 16px;
+    font-size: 12.5px;
   }
   .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 210px;
-    gap: 1.5rem;
+    grid-template-columns: minmax(0, 1fr) 224px;
+    gap: 22px;
     align-items: start;
-  }
-  @media (max-width: 720px) {
-    .layout {
-      grid-template-columns: 1fr;
-    }
   }
   .results.loading {
     opacity: 0.55;
   }
-  .meta,
-  .empty,
-  .hint {
-    color: #6b6b6b;
-    font-size: 0.8rem;
+  .tally {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--ink-muted);
   }
-  .rewrite {
-    background: #fbf6dc;
-    border-left: 3px solid #d8c34a;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
+  .tally b {
+    color: var(--ink);
+    font-weight: 600;
   }
-  .error {
-    background: #fdeaea;
-    border-left: 3px solid #c0392b;
-    padding: 0.5rem 0.7rem;
-    font-size: 0.85rem;
+  .cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .expansion {
+    margin: 0 2px;
+  }
+  .expansion b {
+    color: var(--ink);
   }
   .pager {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.8rem;
+    margin-top: 14px;
   }
-  .pager button {
-    border: 1px solid #c9cfda;
-    background: #fff;
-    border-radius: 4px;
-    padding: 0.25rem 0.6rem;
-    cursor: pointer;
+  .notice {
+    margin: 0 0 12px;
   }
-  .pager button:disabled {
-    opacity: 0.4;
-    cursor: default;
+  @media (max-width: 760px) {
+    .layout {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+    }
   }
 </style>

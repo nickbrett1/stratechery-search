@@ -258,3 +258,30 @@ def test_the_service_has_no_write_path(service):
         assert body["error"]["code"] == "method_not_allowed"
     else:  # pragma: no cover - a 2xx here is the failure
         raise AssertionError("POST /search was accepted")
+
+
+def test_browser_navigation_negotiates_index_html(service):
+    # A browser reloading or directly navigating to /stats or /article/{id} sends
+    # text/html in Accept, which should serve index.html rather than raw JSON.
+    for path in ("/stats", "/article/152"):
+        request = urllib.request.Request(
+            f"{service}{path}",
+            headers={"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 200
+            assert "text/html" in response.headers.get("Content-Type", "")
+            body = response.read().decode("utf-8")
+            assert '<div id="app"></div>' in body
+
+    # An API caller (e.g. Svelte api.js or curl) requests application/json and receives JSON.
+    for path in ("/stats", "/article/152"):
+        request = urllib.request.Request(
+            f"{service}{path}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 200
+            assert "application/json" in response.headers.get("Content-Type", "")
+            data = json.loads(response.read())
+            assert isinstance(data, dict)

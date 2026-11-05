@@ -92,6 +92,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routing ----------------------------------------------------------
 
+    def _wants_html(self) -> bool:
+        accept = self.headers.get("Accept", "")
+        if "text/html" in accept:
+            json_pos = accept.find("application/json")
+            html_pos = accept.find("text/html")
+            if json_pos == -1 or html_pos < json_pos:
+                return True
+        return False
+
     def do_GET(self) -> None:  # noqa: N802 - stdlib signature
         parts = urlsplit(self.path)
         path = unquote(parts.path)
@@ -107,7 +116,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/healthz":
                 self._with_index(lambda conn: self._send_json(api.health(conn)))
             elif path == "/stats":
-                self._with_index(lambda conn: self._send_json(api.stats(conn)))
+                if self._wants_html():
+                    self._serve_static("index.html")
+                else:
+                    self._with_index(lambda conn: self._send_json(api.stats(conn)))
             elif path == "/search":
                 params = api.parse_search_params(query)
                 vocab = api.load_vocab(self.config.vocab_path)
@@ -115,10 +127,13 @@ class Handler(BaseHTTPRequestHandler):
                     lambda conn: self._send_json(api.search(conn, params, vocab))
                 )
             elif path.startswith("/article/"):
-                message_id = self._parse_id(path, "/article/")
-                self._with_index(
-                    lambda conn: self._send_json(api.article(conn, message_id))
-                )
+                if self._wants_html():
+                    self._serve_static("index.html")
+                else:
+                    message_id = self._parse_id(path, "/article/")
+                    self._with_index(
+                        lambda conn: self._send_json(api.article(conn, message_id))
+                    )
             elif path.startswith("/asset/"):
                 self._serve_asset(path, "/asset/")
             elif path in {"/", "/stats/", "/search/"}:

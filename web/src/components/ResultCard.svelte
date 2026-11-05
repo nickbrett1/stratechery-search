@@ -13,79 +13,86 @@
   }
 
   const date = $derived(result.sent_at.slice(0, 10));
+
+  // Kind tints come from the house palette only: sky for the long-form
+  // interviews, green for the weekly, orange for the short updates. Nothing here
+  // introduces a colour the dashboard does not already use.
+  const TONE = {
+    interview: "info",
+    weekly: "ok",
+    update: "warn",
+    daily: "",
+    other: "",
+  };
 </script>
 
-<article class="result">
+<article class="card result">
   <header>
-    <span class="kind kind-{result.kind}">{result.kind}</span>
-    <span class="date">{date}</span>
+    <span class="pill kind {TONE[result.kind] ?? ''}">{result.kind}</span>
+    <span class="date num">{date}</span>
     <a class="subject" href={result.article_href}>{result.subject}</a>
   </header>
   <p class="snippet">{@html safeSnippet(result.snippet)}</p>
   <footer>
     <span>{result.sender}</span>
-    <span>chars {result.start_char}–{result.end_char}</span>
-    <span>score {result.score.toFixed(2)}</span>
-    <a href={result.article_href}>#{result.chunk_id}</a>
+    <span class="num">chars {result.start_char}–{result.end_char}</span>
+    <span class="num">score {result.score.toFixed(2)}</span>
+    <a class="num" href={result.article_href}>#{result.chunk_id}</a>
   </footer>
 </article>
 
 <style>
   .result {
-    border-bottom: 1px solid #e6e6e6;
-    padding: 0.7rem 0;
+    padding: 9px 11px 8px;
+    transition:
+      background 120ms ease,
+      border-color 120ms ease;
+  }
+  .result:hover {
+    background: var(--bg-hover);
+    border-color: var(--line-strong);
   }
   header {
     display: flex;
-    gap: 0.6rem;
+    gap: 8px;
     align-items: baseline;
     flex-wrap: wrap;
   }
+  .kind {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    align-self: center;
+  }
+  .date {
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
   .subject {
     font-weight: 600;
-    color: #1a3d7c;
-    text-decoration: none;
+    font-size: 13.5px;
+    color: var(--ink);
   }
   .subject:hover {
-    text-decoration: underline;
+    color: #fff;
+    text-decoration: none;
   }
-  .date,
-  footer {
-    color: #6b6b6b;
-    font-size: 0.78rem;
-    font-variant-numeric: tabular-nums;
+  .snippet {
+    margin: 5px 0 6px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-dim);
   }
   footer {
     display: flex;
-    gap: 0.9rem;
-    margin-top: 0.3rem;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 10.5px;
+    color: var(--ink-faint);
   }
-  .snippet {
-    margin: 0.35rem 0 0;
-    line-height: 1.5;
+  footer a {
+    color: var(--ink-faint);
   }
-  .snippet :global(mark) {
-    background: #fff2a8;
-    padding: 0 1px;
-  }
-  .kind {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: #eef1f6;
-    color: #40506b;
-  }
-  .kind-interview {
-    background: #ede7f7;
-    color: #4b2f7a;
-  }
-  .kind-weekly {
-    background: #e7f2ea;
-    color: #2c5c3a;
-  }
-  .kind-daily {
-    background: #eef1f6;
+  footer a:hover {
+    color: var(--accent);
   }
 </style>
