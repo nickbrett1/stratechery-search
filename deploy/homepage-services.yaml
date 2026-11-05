@@ -14,8 +14,16 @@
 #   widget      -> /stats, not /livez: two real numbers (articles, passages)
 #                  beat a status string that only says "ok".
 
+#   ordering    -> Homepage orders a group by `weight` first and only uses the name
+#                  to break ties, so alphabetical order is not automatic. File-based
+#                  entries take 100, 200, 300 ... from their position; this file holds
+#                  one service, so the weight is spelled out: 1100 sorts it after
+#                  Potato (1000), which is where "Stratechery" belongs. The container
+#                  label says the same thing in docker-compose.yml.
+
 - Data & Markets:
     - Stratechery Search:
+        weight: 1100
         icon: mdi-text-search
         href: http://ryzen.tail86fd19.ts.net/
         description: full-text search over 1,691 Stratechery articles, 2016 to now
