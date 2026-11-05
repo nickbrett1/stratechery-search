@@ -179,6 +179,7 @@
   }
   .text p {
     margin: 0 0 0.85rem;
+    overflow-wrap: break-word;
   }
   .text p:target {
     background: var(--mark-bg);

@@ -81,6 +81,9 @@
     font-size: 12.5px;
     line-height: 1.55;
     color: var(--ink-dim);
+    /* Article prose contains bare URLs and long identifiers; without this a
+       single token scrolls the whole phone viewport sideways. */
+    overflow-wrap: anywhere;
   }
   footer {
     display: flex;
