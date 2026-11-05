@@ -22,7 +22,7 @@ export function readState() {
   return { ...DEFAULTS, ...readSearchParams(window.location.search) };
 }
 
-export function writeState(state, { replace = false } = {}) {
+export function writeState(state, { replace = false, historyState = {} } = {}) {
   const params = new URLSearchParams();
   if (state.q) params.set("q", state.q);
   if (state.from) params.set("from", state.from);
@@ -33,8 +33,8 @@ export function writeState(state, { replace = false } = {}) {
   if (state.limit && state.limit !== DEFAULTS.limit) params.set("limit", String(state.limit));
   if (state.offset) params.set("offset", String(state.offset));
   const next = `/${params.toString() ? `?${params}` : ""}`;
-  if (replace) window.history.replaceState({}, "", next);
-  else window.history.pushState({}, "", next);
+  if (replace) window.history.replaceState(historyState, "", next);
+  else window.history.pushState(historyState, "", next);
 }
 
 export function toggle(list, value) {

@@ -40,8 +40,6 @@
 {:else if !data}
   <p class="hint">Loading…</p>
 {:else}
-  <a class="back" href="/">← search</a>
-
   <header class="card head">
     <div class="crumbs">
       <span class="pill info kind">{data.kind}</span>
@@ -90,15 +88,6 @@
 {/if}
 
 <style>
-  .back {
-    display: inline-block;
-    font-size: 11px;
-    color: var(--ink-muted);
-    margin-bottom: 10px;
-  }
-  .back:hover {
-    color: var(--accent);
-  }
   .head {
     padding: 12px 14px;
     margin-bottom: 14px;
