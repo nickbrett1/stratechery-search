@@ -142,8 +142,10 @@
   .bar input {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: 13.5px;
     padding: 8px 11px;
+    /* No font-size here on purpose: theme.css owns it (16px on touch, because
+       Safari zooms the page for anything smaller). A value here would outrank
+       that rule and bring the zoom back. */
   }
   /* Never let the button shrink or wrap out of reach: on a phone the input is
      the greedy element and the button is the thing being aimed at. */

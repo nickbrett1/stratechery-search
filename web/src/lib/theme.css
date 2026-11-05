@@ -228,6 +228,7 @@ input[type="text"] {
   border-radius: var(--radius-sm);
   color: var(--ink);
   font: inherit;
+  font-size: 13.5px;
   padding: 7px 10px;
 }
 
@@ -283,11 +284,18 @@ mark {
   body {
     font-size: 12.5px;
   }
+}
 
-  /* iOS Safari zooms the whole page when a focused input is under 16px, and it
-     does not zoom back out — the box grows, the submit button slides off-screen,
-     and the reader has to pinch to find it. 16px is the threshold, not a taste
-     decision; the visual weight is kept by tightening padding instead. */
+/* iOS Safari *and* Chrome on Android zoom the whole page when a focused input is
+ * under 16px, and neither zooms back out — the field grows, the submit button
+ * slides off-screen, and the page reads as broken. This is a threshold, not a
+ * taste decision, and it is keyed on the pointer as well as the width: a phone in
+ * landscape is wider than 600px but is still a touch device.
+ *
+ * Keep this the only place a text field's font-size is set on touch. A component
+ * rule like `.bar input { font-size: 13.5px }` outranks it (two classes beat
+ * `input[type=search]`) and silently reintroduces the zoom. */
+@media (pointer: coarse), (max-width: 600px) {
   input[type="search"],
   input[type="text"] {
     font-size: 16px;
