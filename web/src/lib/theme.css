@@ -86,6 +86,21 @@ a:hover {
   text-underline-offset: 2px;
 }
 
+/* Anything with an intrinsic width has to be told it may not exceed its column.
+   An image (or svg, video, table) wider than the phone scrolls the whole
+   document sideways, which on a sticky-header page reads as "the header and the
+   brand have slid off the right edge". Learned the hard way on the article page,
+   where a 689px banner image overflowed a 390px viewport by 311px; this is the
+   net so a component cannot reintroduce it. */
+img,
+svg,
+video,
+canvas,
+iframe,
+table {
+  max-width: 100%;
+}
+
 code,
 kbd,
 .num {

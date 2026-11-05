@@ -152,6 +152,13 @@
     margin-bottom: 14px;
   }
   .images img {
+    /* An image is the only thing on this page that arrives with an intrinsic
+       width, and the mirror holds banner images far wider than a phone. Capping
+       max-height alone was not enough: a 689px image inside a 390px viewport
+       scrolls the whole document sideways and drags the sticky header — brand
+       included — out past the right edge. */
+    max-width: 100%;
+    height: auto;
     max-height: 96px;
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
