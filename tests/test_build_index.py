@@ -196,3 +196,15 @@ def test_failed_gate_does_not_install_the_index(tmp_path, monkeypatch):
     report = build(derived, archive, out, verify_idempotent=False)
     assert report["installed"] is False
     assert not out.exists()
+
+
+def test_under_represented_year_note_ignores_partial_boundary_years():
+    from stratechery_search.build_index import _stats_notes
+
+    notes = _stats_notes(
+        {2016: 1, 2017: 51, 2018: 156, 2019: 184, 2020: 193, 2021: 201,
+         2022: 201, 2023: 180, 2024: 186, 2025: 181, 2026: 157}
+    )
+    assert [note["year"] for note in notes] == [2017]
+    assert notes[0]["articles"] == 51
+    assert notes[0]["neighbouring_mean"] == 185

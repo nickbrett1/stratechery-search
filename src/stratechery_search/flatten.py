@@ -33,12 +33,14 @@ from .normalise import (
     normalise_body,
 )
 
-#: Phase-1 scope contract §1 gate values. ``transactional`` is the note's
-#: value; the archive actually contains more (see the report), so a mismatch
-#: here is evidence for the owner, not a flattener bug.
+#: Phase-1 scope contract §1 gate values, as amended 2026-11-05 from the
+#: full-corpus run (see stratechery-search-phase1-flatten-findings): 44
+#: transactional mails, and the 27 short bodies below are an enumerated
+#: exemption class rather than failures.
 EXPECTED = {
     "coverage": 1691,
-    "transactional": 4,
+    "transactional": 44,
+    "transactional_by_category": {"access_code": 35, "receipt": 5, "renewal": 4},
     "images_distinct": 2415,
     "images_null": 2,
     "min_chars": 800,
@@ -47,6 +49,18 @@ EXPECTED = {
     "est_tokens_min": 8_000_000,
     "est_tokens_max": 14_000_000,
 }
+
+#: The 27 non-transactional bodies under the length floor. They are editorial
+#: notes — personal days, sick days, schedule and maintenance notices, "check
+#: spam", a wrong-link correction — not truncated articles, and the amended
+#: gate exempts them by id so a *new* short body still fails the build.
+EDITORIAL_NOTE_IDS = frozenset(
+    {
+        2889, 7268, 25125, 32811, 38679, 48785, 56850, 59618, 63565, 64753,
+        66009, 67124, 71582, 71880, 77996, 77997, 80095, 80827, 81531, 82527,
+        83012, 85772, 86159, 86693, 92251, 93053, 124413,
+    }
+)
 
 #: Transactional mail is classified on subject, never on length (design §1).
 #: The survey's "3 Stripe receipts, 1 access code" undercounts the corpus;
@@ -244,6 +258,10 @@ def build_report(
         for counts in era_short.values()
     )
 
+    unexplained_short = [
+        m for m in short_searchable if m["message_id"] not in EDITORIAL_NOTE_IDS
+    ]
+
     short_bodies = [
         {
             "message_id": m["message_id"],
@@ -301,10 +319,14 @@ def build_report(
         ),
         _gate(
             "length_floor",
-            f">= {EXPECTED['min_chars']} chars for non-transactional articles",
-            sorted(m["message_id"] for m in short_searchable),
-            not short_searchable,
-            "exceptions are listed as observed",
+            f">= {EXPECTED['min_chars']} chars for non-transactional articles,"
+            f" {len(EDITORIAL_NOTE_IDS)} enumerated editorial notes exempt",
+            {
+                "short": sorted(m["message_id"] for m in short_searchable),
+                "unexplained": sorted(m["message_id"] for m in unexplained_short),
+            },
+            not unexplained_short,
+            "every short body is an editorial note; a new one fails the gate",
         ),
         _gate(
             "length_sanity",
@@ -322,10 +344,14 @@ def build_report(
         ),
         _gate(
             "transactional",
-            EXPECTED["transactional"],
+            {
+                "count": EXPECTED["transactional"],
+                "by_category": EXPECTED["transactional_by_category"],
+            },
             {"count": len(transactional), "by_category": dict(sorted(categories.items()))},
-            len(transactional) == EXPECTED["transactional"],
-            "the archive contains more transactional mail than design §1 recorded",
+            len(transactional) == EXPECTED["transactional"]
+            and dict(sorted(categories.items())) == EXPECTED["transactional_by_category"],
+            "revised from design §1's 4 by the full-corpus run, approved 2026-11-05",
         ),
         _gate(
             "images",

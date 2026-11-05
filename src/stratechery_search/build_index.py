@@ -159,30 +159,38 @@ def _image_rows(row: dict) -> list[dict]:
 
 
 def _stats_notes(by_year: dict[int, int]) -> list[dict]:
-    """Flag years that hold less than half the mean of their neighbours.
+    """Flag interior years holding less than half the corpus baseline.
 
     This is the §3 ``notes[]`` machinery carrying design §1's honesty
     requirement: 2017 is a source-sampling artefact, not a quiet publishing
     year, and a chart that implies otherwise has to be contradicted in words.
+
+    The baseline is the mean of the *other interior* years. The first and last
+    calendar years are excluded from it because they are partial by
+    construction — the archive starts mid-2016 and stops at the extraction date
+    — and including them would let a two-message 2016 mask a real gap in 2017.
     """
     notes = []
     years = sorted(by_year)
-    for index, year in enumerate(years):
-        if index == 0 or index == len(years) - 1:
+    if len(years) < 3:
+        return notes
+    interior = years[1:-1]
+    for year in interior:
+        others = [by_year[other] for other in interior if other != year]
+        if not others:
             continue
-        neighbours = [by_year[years[index - 1]], by_year[years[index + 1]]]
-        mean = int(sum(neighbours) / 2)
-        if by_year[year] < mean / 2:
+        baseline = int(round(sum(others) / len(others)))
+        if baseline and by_year[year] < baseline / 2:
             notes.append(
                 {
                     "code": f"under_represented_year_{year}",
                     "year": year,
                     "articles": by_year[year],
-                    "neighbouring_mean": mean,
+                    "neighbouring_mean": baseline,
                     "message": (
-                        f"{year} holds {by_year[year]} messages against ~{mean} in "
-                        "neighbouring years. A source sampling artefact, not a change "
-                        "in publishing volume."
+                        f"{year} holds {by_year[year]} messages against ~{baseline} "
+                        "in the surrounding years. A source sampling artefact, not a "
+                        "change in publishing volume."
                     ),
                 }
             )
