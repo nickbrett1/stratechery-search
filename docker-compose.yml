@@ -13,8 +13,12 @@ services:
     container_name: stratechery-search
     restart: unless-stopped
 
+    # Bound to the tailnet address, not to 0.0.0.0: the service is reachable
+    # from your own devices over Tailscale and from nothing else — not the LAN,
+    # not the internet. (127.0.0.1 would be reachable only on the host itself.)
     ports:
-      - "127.0.0.1:8091:8080"
+      - "127.0.0.1:8091:8080"                              # host-local: health widget, ssh tunnels
+      - "${BIND_ADDRESS:-100.127.135.108}:8091:8080"        # tailnet: http://ryzen.tail86fd19.ts.net:8091
     volumes:
       - /srv/datasets/stratechery-archive:/archive:ro
       - /srv/docker/stratechery-search/data:/data
