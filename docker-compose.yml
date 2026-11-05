@@ -37,7 +37,7 @@ services:
       # dashboard entry is the labels, so they are the thing to keep true.
       # browser-facing href -> the tailnet name (the port is loopback-only);
       # widget -> 127.0.0.1, because Homepage is host-networked on ryzen.
-      - "homepage.group=Services"
+      - "homepage.group=Data & Markets"
       - "homepage.name=Stratechery Search"
       - "homepage.icon=mdi-text-search"
       - "homepage.href=http://ryzen.tail86fd19.ts.net/"

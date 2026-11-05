@@ -14,7 +14,7 @@
 #   widget      -> /stats, not /livez: two real numbers (articles, passages)
 #                  beat a status string that only says "ok".
 
-- Services:
+- Data & Markets:
     - Stratechery Search:
         icon: mdi-text-search
         href: http://ryzen.tail86fd19.ts.net/
