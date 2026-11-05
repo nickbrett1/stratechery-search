@@ -62,6 +62,11 @@
     bind:value={typed}
     placeholder="Search 1,691 Stratechery articles — aggregation theory, smiling curve…"
     aria-label="Search the corpus"
+    autocapitalize="none"
+    autocomplete="off"
+    autocorrect="off"
+    enterkeyhint="search"
+    spellcheck="false"
   />
   <button class="btn primary" type="submit">Search</button>
 </form>
@@ -135,12 +140,15 @@
     margin-bottom: 14px;
   }
   .bar input {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     font-size: 13.5px;
     padding: 8px 11px;
   }
+  /* Never let the button shrink or wrap out of reach: on a phone the input is
+     the greedy element and the button is the thing being aimed at. */
   .bar .btn {
+    flex: 0 0 auto;
     padding: 0 16px;
     font-size: 12.5px;
   }
@@ -188,6 +196,22 @@
     .layout {
       grid-template-columns: minmax(0, 1fr);
       gap: 18px;
+    }
+  }
+  @media (max-width: 600px) {
+    /* Same height on both controls so the row reads as one bar, and 40px is the
+       smallest comfortable thumb target. The input's 16px is set globally (see
+       theme.css) because iOS zooms the page for anything smaller. */
+    .bar {
+      gap: 6px;
+    }
+    .bar input,
+    .bar .btn {
+      min-height: 40px;
+    }
+    .bar .btn {
+      padding: 0 14px;
+      font-size: 13px;
     }
   }
 </style>

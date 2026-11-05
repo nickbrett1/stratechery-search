@@ -64,6 +64,7 @@
 html,
 body {
   background: var(--bg);
+  -webkit-text-size-adjust: 100%; /* iOS: no automatic text inflation on rotate */
 }
 
 body {
@@ -281,5 +282,15 @@ mark {
 @media (max-width: 600px) {
   body {
     font-size: 12.5px;
+  }
+
+  /* iOS Safari zooms the whole page when a focused input is under 16px, and it
+     does not zoom back out — the box grows, the submit button slides off-screen,
+     and the reader has to pinch to find it. 16px is the threshold, not a taste
+     decision; the visual weight is kept by tightening padding instead. */
+  input[type="search"],
+  input[type="text"] {
+    font-size: 16px;
+    padding: 6px 10px;
   }
 }
