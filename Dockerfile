@@ -48,7 +48,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=build /opt/venv /opt/venv
 COPY . .
 COPY --from=frontend /app/dist ./web/dist
-EXPOSE 3000
+EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s CMD curl -fsS http://127.0.0.1:3000/livez || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s \
+  CMD curl -fsS "http://127.0.0.1:${PORT:-8080}/livez" || exit 1
 CMD ["python", "-m", "stratechery_search"]

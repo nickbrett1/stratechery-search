@@ -59,7 +59,11 @@ CREATE TABLE articles (
   sender TEXT,
   chars INTEGER, words INTEGER, est_tokens INTEGER,
   n_images INTEGER, has_tables INTEGER,
-  is_transactional INTEGER NOT NULL DEFAULT 0
+  is_transactional INTEGER NOT NULL DEFAULT 0,
+  -- /article/{id} returns derived{} and archive{}; both are per-message facts,
+  -- so they live on the row rather than in a side table.
+  archive_sha256 TEXT, archive_bytes INTEGER,
+  text_sha256 TEXT, normalizer_version TEXT
 );
 
 CREATE TABLE chunks (
@@ -232,7 +236,8 @@ def build(
         conn.executemany(
             "INSERT INTO articles (message_id, sent_at, subject, from_header, kind,"
             " sender, chars, words, est_tokens, n_images, has_tables,"
-            " is_transactional) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            " is_transactional, archive_sha256, archive_bytes, text_sha256,"
+            " normalizer_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 (
                     int(m["message_id"]),
@@ -247,6 +252,10 @@ def build(
                     int(m.get("n_images") or 0),
                     1 if m.get("has_tables") else 0,
                     1 if m.get("is_transactional") else 0,
+                    m.get("archive_sha256"),
+                    int(m["archive_bytes"]) if m.get("archive_bytes") is not None else None,
+                    m.get("text_sha256"),
+                    m.get("normalizer_version"),
                 )
                 for m in metas
             ],
@@ -616,6 +625,21 @@ def _evaluate(
         if sha256_text(text) != claimed:
             hash_mismatch += 1
     gates.append(_gate("chunk_hashes", 0, hash_mismatch, hash_mismatch == 0))
+
+    missing_article_provenance = cur.execute(
+        "SELECT count(*) FROM articles WHERE archive_sha256 IS NULL OR archive_sha256 = ''"
+        " OR archive_bytes IS NULL OR text_sha256 IS NULL OR text_sha256 = ''"
+        " OR normalizer_version IS NULL OR normalizer_version = ''"
+    ).fetchone()[0]
+    gates.append(
+        _gate(
+            "article_provenance",
+            0,
+            missing_article_provenance,
+            missing_article_provenance == 0,
+            note="/article/{id} returns these; a gap here is an empty field in the contract",
+        )
+    )
 
     return {"gates": gates, "observed": _observed(cur)}
 
