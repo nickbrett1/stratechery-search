@@ -34,7 +34,7 @@
 
 <header class="top">
   <a class="brand" href="/" onclick={(event) => { event.preventDefault(); go("/"); }}>
-    stratechery<span class="sep">/</span><b>search</b>
+    Stratechery <b>Search</b>
   </a>
   <nav class="seg">
     <button
@@ -92,10 +92,6 @@
   .brand b {
     color: #fff;
     font-weight: 600;
-  }
-  .brand .sep {
-    color: var(--ink-faint);
-    margin: 0 1px;
   }
   .brand:hover {
     text-decoration: none;

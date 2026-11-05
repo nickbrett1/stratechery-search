@@ -295,3 +295,27 @@ def test_browser_navigation_negotiates_index_html(service):
             assert "application/json" in response.headers.get("Content-Type", "")
             data = json.loads(response.read())
             assert isinstance(data, dict)
+
+
+def test_app_icon_and_manifest_are_served_with_real_content_types(service):
+    # A browser asks for the icon and the manifest before any of this app's JS
+    # runs, and a wrong Content-Type makes it ignore both (a manifest served as
+    # text/plain will not install, an SVG served as octet-stream will not render).
+    for path, expected in (
+        ("/favicon.svg", "image/svg+xml"),
+        ("/site.webmanifest", "application/manifest+json"),
+    ):
+        with urllib.request.urlopen(f"{service}{path}", timeout=10) as response:
+            assert response.status == 200
+            assert response.headers.get("Content-Type", "") == expected, path
+
+
+def test_index_html_names_the_app_in_full(service):
+    # The product is "Stratechery Search", capital S — not the lowercase
+    # "stratechery/search" wordmark the header used to draw, and not the
+    # sentence-case title the first build shipped.
+    with urllib.request.urlopen(f"{service}/", timeout=10) as response:
+        body = response.read().decode("utf-8")
+    assert '<div id="app"></div>' in body
+    assert "<title>Stratechery Search</title>" in body
+    assert "Stratechery search" not in body

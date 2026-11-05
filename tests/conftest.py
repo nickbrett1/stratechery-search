@@ -145,7 +145,18 @@ def service(corpus):
     dist = archive.parent / "dist"
     dist.mkdir(parents=True, exist_ok=True)
     (dist / "index.html").write_text(
-        '<!doctype html><html><body><div id="app"></div></body></html>', encoding="utf-8"
+        "<!doctype html><html><head><title>Stratechery Search</title></head>"
+        '<body><div id="app"></div></body></html>',
+        encoding="utf-8",
+    )
+    # The real bundle ships an icon set from web/public/; the fixture keeps the
+    # two text-based ones so the static-type contract can be asserted without
+    # committing PNGs to the test tree.
+    (dist / "favicon.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>', encoding="utf-8"
+    )
+    (dist / "site.webmanifest").write_text(
+        '{"name": "Stratechery Search", "start_url": "/"}', encoding="utf-8"
     )
     config = Config(
         port=0,

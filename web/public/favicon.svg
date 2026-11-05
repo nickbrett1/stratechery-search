@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Stratechery Search">
+  <title>Stratechery Search</title>
+  <!-- The house ground (#0f172a) with the accent lens (#7dd3fc) and the one warm
+       note (#fce4b8) the corpus uses for a search-match: text inside a magnifier.
+       Strokes are deliberately heavy — at 16px in a tab bar this has to read as a
+       lens with writing in it, not as a smudge. -->
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <circle cx="27" cy="27" r="13.5" fill="none" stroke="#7dd3fc" stroke-width="6"/>
+  <line x1="37" y1="37" x2="50" y2="50" stroke="#7dd3fc" stroke-width="7" stroke-linecap="round"/>
+  <line x1="20" y1="23" x2="34" y2="23" stroke="#fce4b8" stroke-width="5" stroke-linecap="round"/>
+  <line x1="20" y1="31" x2="28" y2="31" stroke="#fce4b8" stroke-width="5" stroke-linecap="round"/>
+</svg>
