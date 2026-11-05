@@ -25,14 +25,13 @@ from datetime import UTC, datetime
 from email.message import Message
 from pathlib import Path
 
+from .chunk import CHUNKER_VERSION
 from .normalise import (
     FLATTENER_VERSION,
     NORMALIZER_VERSION,
     NormaliseError,
     normalise_body,
 )
-
-CHUNKER_VERSION = "1"
 
 #: Phase-1 scope contract §1 gate values. ``transactional`` is the note's
 #: value; the archive actually contains more (see the report), so a mismatch
