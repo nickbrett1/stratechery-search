@@ -12,6 +12,14 @@
   const totalKind = $derived(
     (facets?.by_kind || []).reduce((sum, bucket) => sum + bucket.count, 0)
   );
+  // A facet panel with nothing in it is four headings over four empty lists —
+  // the same clutter as an instruction line. Draw it only when there is at least
+  // one bucket to click, which also covers a search that matched nothing.
+  const hasBuckets = $derived(
+    (facets?.by_year?.length ?? 0) > 0 ||
+      (facets?.by_kind?.length ?? 0) > 0 ||
+      (facets?.by_sender?.length ?? 0) > 0
+  );
 
   function yearActive(year) {
     return query.from === `${year}-01-01` && query.to === `${year}-12-31`;
@@ -28,6 +36,7 @@
   }
 </script>
 
+{#if hasBuckets}
 <aside class="facets">
   <section>
     <h2 class="section-title">Year</h2>
@@ -103,6 +112,7 @@
     </ul>
   </section>
 </aside>
+{/if}
 
 <style>
   .facets {

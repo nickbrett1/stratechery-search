@@ -125,8 +125,6 @@
           next →
         </button>
       </nav>
-    {:else if !query.q}
-      <p class="notice">Type a query. Facets appear once there are results to facet.</p>
     {/if}
   </section>
 
