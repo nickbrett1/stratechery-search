@@ -336,6 +336,16 @@ def test_stats_shape_is_the_contract(service):
     assert sum(year["articles"] for year in body["by_year"]) == body["articles"]
     assert set(body["index"]) == {"flattener_version", "chunker_version", "built_at"}
     assert isinstance(body["notes"], list)
+    # notes[] is computed at request time from the same counts this response
+    # carries, not replayed from the build-time snapshot: a snapshot can only go
+    # stale, and did — it kept describing a 2017 gap the page had stopped
+    # drawing.
+    from stratechery_search.notes import stats_notes
+
+    assert body["notes"] == stats_notes(
+        {bucket["year"]: bucket["articles"] for bucket in body["by_year"]},
+        int(body["searchable"]["daily_from"][:4]),
+    )
 
 
 def test_stats_offers_the_searchable_slices_the_landing_screen_builds_chips_from(
@@ -350,6 +360,10 @@ def test_stats_offers_the_searchable_slices_the_landing_screen_builds_chips_from
     assert sum(bucket["articles"] for bucket in searchable["by_year"]) == 2
     assert [bucket["kind"] for bucket in searchable["by_kind"]] == ["update"]
     assert sum(bucket["articles"] for bucket in searchable["by_kind"]) == 2
+    # The corpus page states the subscription boundary beside its per-year
+    # chart: a short bar before it means "not subscribed yet", not "published
+    # less". The first searchable update in this fixture is 2018-11-14.
+    assert searchable["daily_from"] == "2018-11-14T11:00:00Z"
 
 
 def test_asset_is_served_with_an_image_content_type(service):

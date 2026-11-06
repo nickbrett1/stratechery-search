@@ -219,24 +219,49 @@ def test_failed_gate_does_not_install_the_index(tmp_path, monkeypatch):
     assert not out.exists()
 
 
-def test_under_represented_year_note_ignores_partial_boundary_years():
-    from stratechery_search.build_index import _stats_notes
+BY_YEAR = {
+    2016: 1,
+    2017: 51,
+    2018: 156,
+    2019: 184,
+    2020: 193,
+    2021: 201,
+    2022: 201,
+    2023: 180,
+    2024: 186,
+    2025: 181,
+    2026: 157,
+}
 
-    notes = _stats_notes(
-        {
-            2016: 1,
-            2017: 51,
-            2018: 156,
-            2019: 184,
-            2020: 193,
-            2021: 201,
-            2022: 201,
-            2023: 180,
-            2024: 186,
-            2025: 181,
-            2026: 157,
-        }
-    )
+
+def test_under_represented_year_note_ignores_partial_boundary_years():
+    from stratechery_search.notes import stats_notes
+
+    # daily_from_year=2016: this is the baseline arithmetic on its own, where
+    # every interior year is fair game. 2016 and 2026 are excluded as partial by
+    # construction, so a one-message 2016 cannot mask the gap in 2017.
+    notes = stats_notes(BY_YEAR, daily_from_year=2016)
     assert [note["year"] for note in notes] == [2017]
     assert notes[0]["articles"] == 51
     assert notes[0]["neighbouring_mean"] == 185
+
+
+def test_a_short_year_before_the_daily_update_arrived_is_left_to_the_caption():
+    from stratechery_search.notes import stats_notes
+
+    # 2017 is short because the daily update was not subscribed to yet, and the
+    # corpus page's chart caption says so once. A note repeating it was both
+    # redundant and wrong about the cause ("a sampling artefact").
+    assert stats_notes(BY_YEAR, daily_from_year=2018) == []
+
+
+def test_a_short_year_after_the_daily_update_arrived_is_still_noted():
+    from stratechery_search.notes import stats_notes
+
+    thin = {**BY_YEAR, 2020: 80}
+    notes = stats_notes(thin, daily_from_year=2018)
+    assert [note["year"] for note in notes] == [2020]
+    assert notes[0]["code"] == "under_represented_year_2020"
+    # The note knows a count, not a cause, and does not invent one.
+    assert "archive" in notes[0]["message"]
+    assert "sampling" not in notes[0]["message"]

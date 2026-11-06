@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .notes import stats_notes
+
 SNIPPET_OPEN = "<mark>"
 SNIPPET_CLOSE = "</mark>"
 SNIPPET_ELLIPSIS = "…"
@@ -747,18 +749,41 @@ def stats(conn: sqlite3.Connection) -> dict:
         chunker_version,
     ) = row
 
+    by_year = [
+        {"year": year, "articles": count, "chars": chars}
+        for year, count, chars in conn.execute(
+            "SELECT year, articles, chars FROM stats_by_year ORDER BY year"
+        )
+    ]
+    searchable_by_year = [
+        {"year": year, "articles": count}
+        for year, count in conn.execute(
+            "SELECT substr(sent_at, 1, 4) AS year, count(*) FROM articles"
+            " WHERE is_transactional = 0 GROUP BY year ORDER BY year"
+        )
+    ]
+    searchable_by_kind = [
+        {"kind": kind, "articles": count}
+        for kind, count in conn.execute(
+            "SELECT kind, count(*) FROM articles WHERE is_transactional = 0"
+            " GROUP BY kind ORDER BY count(*) DESC, kind"
+        )
+    ]
+    # When the daily update starts reaching this archive. The corpus page states
+    # it beside the per-year chart, because before that boundary a short bar means
+    # "not subscribed yet", not "published less".
+    daily_from = conn.execute(
+        "SELECT min(sent_at) FROM articles WHERE is_transactional = 0"
+        " AND kind IN ('daily', 'update')"
+    ).fetchone()[0]
+
     return {
         "articles": articles,
         "searchable_articles": searchable_articles,
         "chunks": chunks,
         "first": first_sent_at,
         "last": last_sent_at,
-        "by_year": [
-            {"year": year, "articles": count, "chars": chars}
-            for year, count, chars in conn.execute(
-                "SELECT year, articles, chars FROM stats_by_year ORDER BY year"
-            )
-        ],
+        "by_year": by_year,
         "by_kind": [
             {"kind": kind, "articles": count}
             for kind, count in conn.execute(
@@ -779,39 +804,24 @@ def stats(conn: sqlite3.Connection) -> dict:
         # code). These slices are the same query restricted to what the reader
         # can actually reach.
         "searchable": {
-            "by_year": [
-                {"year": year, "articles": count}
-                for year, count in conn.execute(
-                    "SELECT substr(sent_at, 1, 4) AS year, count(*) FROM articles"
-                    " WHERE is_transactional = 0 GROUP BY year ORDER BY year"
-                )
-            ],
-            "by_kind": [
-                {"kind": kind, "articles": count}
-                for kind, count in conn.execute(
-                    "SELECT kind, count(*) FROM articles WHERE is_transactional = 0"
-                    " GROUP BY kind ORDER BY count(*) DESC, kind"
-                )
-            ],
+            "by_year": searchable_by_year,
+            "by_kind": searchable_by_kind,
+            "daily_from": daily_from,
         },
         "transactional": transactional,
         "images": {
             "distinct_assets": images_distinct,
             "articles_with_images": articles_with_images,
         },
-        "notes": [
-            {
-                "code": code,
-                "year": year,
-                "articles": count,
-                "neighbouring_mean": mean,
-                "message": message,
-            }
-            for code, year, count, mean, message in conn.execute(
-                "SELECT code, year, articles, neighbouring_mean, message FROM stats_notes"
-                " ORDER BY code"
-            )
-        ],
+        # Recomputed here rather than read from the build-time `stats_notes`
+        # snapshot: the note is a pure function of the yearly counts (which this
+        # response already carries) and the date the daily update starts, so a
+        # snapshot can only ever be stale — it kept describing a 2017 that the
+        # page had stopped drawing long after the chart caption explained it.
+        "notes": stats_notes(
+            {bucket["year"]: bucket["articles"] for bucket in by_year},
+            int(daily_from[:4]) if daily_from else None,
+        ),
         "index": {
             "flattener_version": flattener_version,
             "chunker_version": chunker_version,

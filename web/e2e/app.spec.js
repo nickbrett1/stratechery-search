@@ -174,6 +174,21 @@ test.describe("drill-in", () => {
   });
 });
 
+test.describe("corpus page", () => {
+  test("the per-year chart states when the daily update started", async ({
+    page,
+  }) => {
+    await page.goto("/stats");
+
+    // The bars before that date are weekly and free articles, not a quiet year;
+    // the caption carries the explanation so the indexer's notes[] does not have
+    // to repeat it (and get the cause wrong).
+    await expect(
+      page.getByText(/Daily updates reach this archive from November 2018/),
+    ).toBeVisible();
+  });
+});
+
 test.describe("phone", () => {
   test("neither the landing screen nor results scroll sideways", async ({
     page,

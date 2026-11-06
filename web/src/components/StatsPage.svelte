@@ -26,6 +26,23 @@
   const maxYear = $derived(
     Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles)),
   );
+
+  // The per-year chart has one honest caveat and it belongs on the chart, not in
+  // a warning box above it: this archive is a mailbox, so the bars before the
+  // daily update was subscribed to are weekly and free articles, not a quieter
+  // publishing year. The date comes from /stats rather than being typed here, so
+  // it moves when the archive does.
+  function monthYear(iso) {
+    if (!iso) return "";
+    const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+    return date.toLocaleDateString("en-GB", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+  const dailyFrom = $derived(monthYear(data?.searchable?.daily_from));
 </script>
 
 {#if error}
@@ -69,8 +86,10 @@
     </div>
   </div>
 
-  <!-- notes[] is rendered next to the chart on purpose: a bar chart that could
-       imply 2017 was a quiet year must be contradicted in words, not in a memo. -->
+  <!-- A note can still appear — the indexer flags a year that is short *after*
+       the daily update began reaching the archive, which the caption below
+       cannot explain. Years before that boundary are the caption's job instead,
+       so the same fact is not stated twice. -->
   {#each data.notes as note (note.code)}
     <p class="notice warn"><b>{note.year}</b> — {note.message}</p>
   {/each}
@@ -78,7 +97,12 @@
   <div class="card chart">
     <h3>Articles per year</h3>
     <div class="note hint">
-      One bar per published year; the gap in 2017 is a sampling artefact.
+      {#if dailyFrom}
+        Daily updates reach this archive from {dailyFrom}; earlier bars are the
+        weekly and free articles, not a quieter year.
+      {:else}
+        One bar per published year.
+      {/if}
     </div>
     <div class="years">
       {#each data.by_year as bucket (bucket.year)}
