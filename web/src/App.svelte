@@ -85,7 +85,7 @@
 
 <svelte:document onclick={onDocumentClick} />
 
-<header class="top">
+<header class="top" class:drill={isDrillIn}>
   {#if isDrillIn}
     <button class="back" type="button" onclick={back} aria-label="Back to results">
       <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -102,7 +102,11 @@
     </button>
   {/if}
   <a class="brand" href="/" onclick={(event) => { event.preventDefault(); go("/"); }}>
-    Stratechery <b>Search</b>
+    <!-- The same mark the tab and the home screen use, at 22px. It is the only
+         colour in a header that is otherwise ink on the ground colour — the
+         accent lens and the cream match lines are the whole point of it. -->
+    <img class="mark" src="/favicon.svg" alt="" width="22" height="22" aria-hidden="true" />
+    <span class="name">Stratechery <b>Search</b></span>
   </a>
   <nav class="seg">
     <button
@@ -195,11 +199,30 @@
     margin-left: auto;
   }
   .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
     color: var(--ink-dim);
     font-size: 13px;
     font-weight: 500;
     letter-spacing: -0.01em;
     text-decoration: none;
+    min-width: 0;
+  }
+  /* The tile in favicon.svg is the ground colour, which is also the header, so
+     without a hairline the mark floats as a bare magnifier. One ring makes it
+     read as the app icon it is. */
+  .mark {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--line-strong);
+  }
+  .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .brand b {
     color: #fff;
@@ -226,6 +249,15 @@
     }
     .back {
       height: 34px;
+    }
+  }
+  /* On a drill-in at phone width, the nav steps aside: the back button already
+     occupies that corner, and keeping both squeezed the wordmark to
+     "Stratechery Searc…". The brand and the icon stay — they are the point of the
+     top left — and /stats is one tap away through back. */
+  @media (max-width: 420px) {
+    .top.drill .seg {
+      display: none;
     }
   }
   /* Narrowest phones: the word "back" goes, the arrow and the 44px target stay.
