@@ -2,7 +2,7 @@
   // Facet counts come from the same /search response as the results (§3 NEW):
   // a separate /facets call renders counts that lag the result set by one round
   // trip, which is the bug faceted search always has.
-  import { toggle } from "../lib/query.js";
+  import { groupKinds, kindActive, toggleKindGroup } from "../lib/display.js";
 
   let { facets = null, query, onchange } = $props();
 
@@ -12,6 +12,9 @@
   const totalKind = $derived(
     (facets?.by_kind || []).reduce((sum, bucket) => sum + bucket.count, 0)
   );
+  // daily + update are one product under two names; the panel offers one row for
+  // both and filters by both kinds at once (see lib/display.js).
+  const kinds = $derived(groupKinds(facets?.by_kind || []));
   // A facet panel with nothing in it is four headings over four empty lists —
   // the same clutter as an instruction line. Draw it only when there is at least
   // one bucket to click, which also covers a search that matched nothing.
@@ -64,20 +67,20 @@
   <section>
     <h2 class="section-title">Kind</h2>
     <ul class="toggles">
-      {#each facets?.by_kind || [] as bucket (bucket.kind)}
+      {#each kinds as group (group.id)}
         <li>
           <button
             type="button"
-            class:active={query.kind.includes(bucket.kind)}
-            onclick={() => onchange({ ...query, offset: 0, kind: toggle(query.kind, bucket.kind) })}
+            class:active={kindActive(query.kind, group.kinds)}
+            onclick={() => onchange({ ...query, offset: 0, kind: toggleKindGroup(query.kind, group.kinds) })}
           >
-            <span>{bucket.kind}</span>
-            <span class="count num">{bucket.count}</span>
+            <span>{group.label}</span>
+            <span class="count num">{group.count}</span>
           </button>
         </li>
       {/each}
     </ul>
-    <p class="hint">{totalKind} passages across {facets?.by_kind?.length || 0} kinds</p>
+    <p class="hint">{totalKind} passages across {kinds.length} kinds</p>
   </section>
 
   <section>

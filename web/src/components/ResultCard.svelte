@@ -1,4 +1,6 @@
 <script>
+  import { displaySubject, kindLabel } from "../lib/display.js";
+
   // The snippet arrives with <mark>…</mark> from SQLite's snippet(). It is article
   // text, so everything else is escaped before the marks go back in: the index
   // is trusted, the prose inside it is not markup.
@@ -20,26 +22,27 @@
   const TONE = {
     interview: "info",
     weekly: "ok",
+    // daily and update are one product under two names (see lib/display.js), so
+    // they cannot carry two colours as if they were two kinds of thing.
     update: "warn",
-    daily: "",
+    daily: "warn",
     other: "",
   };
 </script>
 
 <article class="card result">
   <header>
-    <span class="pill kind {TONE[result.kind] ?? ''}">{result.kind}</span>
+    <span class="pill kind {TONE[result.kind] ?? ''}">{kindLabel(result.kind)}</span>
     <span class="date num">{date}</span>
-    <a class="subject" href={result.article_href}>{result.subject}</a>
+    <a class="subject" href={result.article_href}>{displaySubject(result.subject)}</a>
   </header>
   <p class="snippet">{@html safeSnippet(result.snippet)}</p>
-  <!-- No sender here: every article in the corpus comes from one of three
-       @stratechery.com addresses, so the line reads "email@stratechery.com" under
-       every result and tells the reader nothing about the passage. -->
+  <!-- One thing only: which passage of the article this is. The sender is the
+       same address on every card, and character offsets and BM25 scores are
+       index internals — three lines of developer telemetry under every snippet
+       in a product read on a phone. -->
   <footer>
-    <span class="num">chars {result.start_char}–{result.end_char}</span>
-    <span class="num">score {result.score.toFixed(2)}</span>
-    <a class="num" href={result.article_href}>#{result.chunk_id}</a>
+    <a class="num" href={result.article_href}>passage {Number(result.chunk_id.split(":")[1]) + 1} →</a>
   </footer>
 </article>
 

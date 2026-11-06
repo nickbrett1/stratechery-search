@@ -63,11 +63,23 @@
         patch: { from: "", to: "" },
       });
     }
-    for (const kind of query.kind || []) {
+    // daily + update are one product under two names, so one chip stands for
+    // both and removing it drops both — otherwise the reader has to know which
+    // era they are in to undo a filter (see lib/display.js).
+    const selectedKinds = query.kind || [];
+    if (selectedKinds.some((kind) => kind === "daily" || kind === "update")) {
+      chips.push({
+        key: "kind-daily-update",
+        label: "daily update",
+        patch: { kind: selectedKinds.filter((kind) => kind !== "daily" && kind !== "update") },
+      });
+    }
+    for (const kind of selectedKinds) {
+      if (kind === "daily" || kind === "update") continue;
       chips.push({
         key: `kind-${kind}`,
         label: kind,
-        patch: { kind: (query.kind || []).filter((value) => value !== kind) },
+        patch: { kind: selectedKinds.filter((value) => value !== kind) },
       });
     }
     for (const sender of query.sender || []) {

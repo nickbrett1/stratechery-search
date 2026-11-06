@@ -1,5 +1,6 @@
 <script>
   import { article } from "../lib/api.js";
+  import { displaySubject, kindLabel } from "../lib/display.js";
 
   let { messageId } = $props();
 
@@ -42,11 +43,11 @@
 {:else}
   <header class="card head">
     <div class="crumbs">
-      <span class="pill info kind">{data.kind}</span>
+      <span class="pill info kind">{kindLabel(data.kind)}</span>
       <span class="num date">{data.sent_at.slice(0, 10)}</span>
       {#if data.is_transactional}<span class="pill warn">transactional</span>{/if}
     </div>
-    <h1>{data.subject}</h1>
+    <h1>{displaySubject(data.subject)}</h1>
     <dl class="facts">
       <div><dt class="micro">from</dt><dd>{data.from_header}</dd></div>
       <div><dt class="micro">words</dt><dd class="num">{data.words.toLocaleString()}</dd></div>

@@ -1,5 +1,6 @@
 <script>
   import { stats } from "../lib/api.js";
+  import { groupKinds } from "../lib/display.js";
 
   let data = $state(null);
   let error = $state(null);
@@ -17,6 +18,10 @@
       cancelled = true;
     };
   });
+
+  // daily + update are one product under two names (see lib/display.js): the
+  // corpus is 1,058 daily updates, not 502 of one thing and 556 of another.
+  const kinds = $derived(groupKinds(data?.by_kind ?? []));
 
   const maxYear = $derived(
     Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles))
@@ -89,8 +94,8 @@
   <div class="card kindex">
     <h3>By kind</h3>
     <ul>
-      {#each data.by_kind as bucket (bucket.kind)}
-        <li><span>{bucket.kind}</span><span class="count num">{bucket.articles}</span></li>
+      {#each kinds as bucket (bucket.id)}
+        <li><span>{bucket.label}</span><span class="count num">{bucket.articles}</span></li>
       {/each}
     </ul>
   </div>
