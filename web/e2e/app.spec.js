@@ -175,17 +175,19 @@ test.describe("drill-in", () => {
 });
 
 test.describe("corpus page", () => {
-  test("the per-year chart states when the daily update started", async ({
+  test("the per-year chart explains itself, or stays quiet", async ({
     page,
   }) => {
     await page.goto("/stats");
 
-    // The bars before that date are weekly and free articles, not a quiet year;
-    // the caption carries the explanation so the indexer's notes[] does not have
-    // to repeat it (and get the cause wrong).
-    await expect(
-      page.getByText(/Daily updates reach this archive from November 2018/),
-    ).toBeVisible();
+    // The caption is where the archive explains its own shape: before sustained
+    // daily coverage a short bar means "not subscribed yet", not "published
+    // less". This fixture is two updates eleven years apart, so it cannot claim
+    // that boundary honestly and falls back to the plain line — the "March 2018"
+    // answer is pinned in tests/test_build_index.py, which has the real shape.
+    await expect(page.locator(".card.chart .note")).toHaveText(
+      "One bar per published year.",
+    );
   });
 });
 

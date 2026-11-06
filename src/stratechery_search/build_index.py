@@ -32,7 +32,7 @@ from pathlib import Path
 
 from .chunk import CHUNKER_VERSION, chunk_article, sha256_text
 from .flatten import read_index
-from .notes import stats_notes
+from .notes import daily_from_month, stats_notes
 
 SCHEMA_VERSION = "1"
 
@@ -298,16 +298,18 @@ def build(
             ]
             by_sender[meta.get("sender") or ""] += 1
 
-        # When did the daily update start reaching this mailbox? It is the
+        # When did sustained daily coverage start reaching this mailbox? It is the
         # boundary before which a thin year is explained by the subscription
         # rather than by the archive losing mail.
-        daily_sent_at = [
-            str(m["sent_at"])
-            for m in metas
-            if (m.get("kind") or "other") in {"daily", "update"}
-            and not m.get("is_transactional")
-        ]
-        daily_from_year = int(min(daily_sent_at)[:4]) if daily_sent_at else None
+        daily_from = daily_from_month(
+            {
+                str(m["sent_at"])[:7]
+                for m in metas
+                if (m.get("kind") or "other") in {"daily", "update"}
+                and not m.get("is_transactional")
+            }
+        )
+        daily_from_year = int(daily_from[:4]) if daily_from else None
 
         transactional = sum(1 for m in metas if m.get("is_transactional"))
         distinct_assets = {

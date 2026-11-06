@@ -342,9 +342,10 @@ def test_stats_shape_is_the_contract(service):
     # drawing.
     from stratechery_search.notes import stats_notes
 
+    daily_from = body["searchable"]["daily_from"]
     assert body["notes"] == stats_notes(
         {bucket["year"]: bucket["articles"] for bucket in body["by_year"]},
-        int(body["searchable"]["daily_from"][:4]),
+        int(daily_from[:4]) if daily_from else None,
     )
 
 
@@ -362,8 +363,9 @@ def test_stats_offers_the_searchable_slices_the_landing_screen_builds_chips_from
     assert sum(bucket["articles"] for bucket in searchable["by_kind"]) == 2
     # The corpus page states the subscription boundary beside its per-year
     # chart: a short bar before it means "not subscribed yet", not "published
-    # less". The first searchable update in this fixture is 2018-11-14.
-    assert searchable["daily_from"] == "2018-11-14T11:00:00Z"
+    # less". This fixture is two updates eleven years apart, so it cannot claim
+    # a boundary at all — and says so rather than inventing one.
+    assert searchable["daily_from"] is None
 
 
 def test_asset_is_served_with_an_image_content_type(service):

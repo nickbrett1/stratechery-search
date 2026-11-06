@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .notes import stats_notes
+from .notes import daily_from_month, stats_notes
 
 SNIPPET_OPEN = "<mark>"
 SNIPPET_CLOSE = "</mark>"
@@ -769,13 +769,20 @@ def stats(conn: sqlite3.Connection) -> dict:
             " GROUP BY kind ORDER BY count(*) DESC, kind"
         )
     ]
-    # When the daily update starts reaching this archive. The corpus page states
-    # it beside the per-year chart, because before that boundary a short bar means
-    # "not subscribed yet", not "published less".
-    daily_from = conn.execute(
-        "SELECT min(sent_at) FROM articles WHERE is_transactional = 0"
-        " AND kind IN ('daily', 'update')"
-    ).fetchone()[0]
+    # When sustained daily coverage starts. The corpus page states it beside the
+    # per-year chart, because before that boundary a short bar means "not
+    # subscribed yet", not "published less". Not the *first* daily update: two
+    # free sample updates in 2017 would put that in September 2017, fourteen
+    # months early.
+    daily_from = daily_from_month(
+        {
+            month
+            for (month,) in conn.execute(
+                "SELECT DISTINCT substr(sent_at, 1, 7) FROM articles"
+                " WHERE is_transactional = 0 AND kind IN ('daily', 'update')"
+            )
+        }
+    )
 
     return {
         "articles": articles,

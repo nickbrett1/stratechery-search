@@ -265,3 +265,24 @@ def test_a_short_year_after_the_daily_update_arrived_is_still_noted():
     # The note knows a count, not a cause, and does not invent one.
     assert "archive" in notes[0]["message"]
     assert "sampling" not in notes[0]["message"]
+
+
+def test_daily_coverage_starts_at_the_first_sustained_year_not_at_a_sample():
+    from stratechery_search.notes import daily_from_month
+
+    # The real shape: a [FREE] and a [FIXED] daily update in 2017 (months 09 and
+    # 11), then continuous coverage from March 2018. Taking the earliest daily
+    # message would put the boundary in September 2017 and be wrong by fourteen
+    # months.
+    months = {f"2017-{month:02d}" for month in (9, 11)}
+    months |= {f"2018-{month:02d}" for month in range(3, 13)}
+    assert daily_from_month(months) == "2018-03-01"
+
+
+def test_a_thin_corpus_cannot_claim_a_daily_boundary():
+    from stratechery_search.notes import daily_from_month
+
+    # The three-message fixture: one update in 2018, one in 2026. Claiming
+    # "daily updates from July 2026" on the strength of one message would be
+    # worse than saying nothing.
+    assert daily_from_month({"2018-11", "2026-07"}) is None

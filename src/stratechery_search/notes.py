@@ -1,13 +1,18 @@
-"""Which years the corpus page has to explain.
+"""What the corpus page owes the reader about its own shape.
+
+Two answers, both of them derived from the data rather than typed into the page:
+where sustained daily coverage begins (``daily_from_month``) and which years are
+still short *after* that point (``stats_notes``).
 
 Kept out of ``build_index`` because two callers need the same answer: the
-indexer, which writes the build-time snapshot into ``stats_notes``, and
-``/stats``, which recomputes it. The note is a pure function of the per-year
-counts and the date the daily update started arriving, so computing it at
-request time means a note can never describe an archive it was not built from.
+indexer, which writes a build-time snapshot into ``stats_notes``, and ``/stats``,
+which recomputes it. Both are pure functions of the counts, so computing them at
+request time means they can never describe an archive they were not built from.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterable
 
 
 def stats_notes(by_year: dict[int, int], daily_from_year: int | None = None) -> list[dict]:
@@ -62,3 +67,35 @@ def stats_notes(by_year: dict[int, int], daily_from_year: int | None = None) -> 
                 }
             )
     return notes
+
+
+#: How many months of a year must carry a daily update before that year is taken
+#: to be inside the daily subscription rather than before it. Half a year is
+#: deliberately forgiving of a quiet month and deliberately unforgiving of a
+#: stray sample — this archive has exactly two such samples, a [FREE] and a
+#: [FIXED] daily update from 2017, and a rule that treated either as the start
+#: of coverage would say "daily updates from September 2017" and be wrong by
+#: fourteen months.
+DAILY_MONTHS_MIN = 6
+
+
+def daily_from_month(months_with_daily: Iterable[str]) -> str | None:
+    """First month of sustained daily coverage, as ``YYYY-MM-01``.
+
+    The corpus page states this beside its per-year chart: before it, a short bar
+    means "not subscribed yet", not "published less". The caller decides what
+    counts as a daily update; this function only decides whether the archive can
+    honestly claim a boundary at all.
+
+    Returns ``None`` when no year carries enough daily months — a three-message
+    fixture must not be able to claim "daily updates from March 2026" on the
+    strength of one message.
+    """
+    by_year: dict[str, set[str]] = {}
+    for month in months_with_daily:
+        by_year.setdefault(month[:4], set()).add(month)
+    for year in sorted(by_year):
+        months = sorted(by_year[year])
+        if len(months) >= DAILY_MONTHS_MIN:
+            return f"{months[0]}-01"
+    return None
