@@ -50,7 +50,9 @@ SNIPPET_ARGS = [SNIPPET_OPEN, SNIPPET_CLOSE, SNIPPET_ELLIPSIS, SNIPPET_TOKENS]
 class ApiError(Exception):
     """An error the HTTP layer renders as ``{"error": {...}}``."""
 
-    def __init__(self, status: int, code: str, message: str, detail: Any = None) -> None:
+    def __init__(
+        self, status: int, code: str, message: str, detail: Any = None
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
@@ -102,7 +104,9 @@ def _check_date(value: str | None, name: str) -> str | None:
     if value is None or value == "":
         return None
     if not _DATE_RE.match(value):
-        raise ApiError(400, "bad_request", f"{name} must be YYYY-MM-DD", {"value": value})
+        raise ApiError(
+            400, "bad_request", f"{name} must be YYYY-MM-DD", {"value": value}
+        )
     return value
 
 
@@ -122,7 +126,9 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
 
     kinds = tuple(
         value
-        for value in (part.strip() for value in query.get("kind", []) for part in value.split(","))
+        for value in (
+            part.strip() for value in query.get("kind", []) for part in value.split(",")
+        )
         if value
     )
     unknown = [kind for kind in kinds if kind not in KINDS]
@@ -135,13 +141,17 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
     except (TypeError, ValueError) as exc:
         raise ApiError(400, "bad_request", "limit and offset must be integers") from exc
     if limit < 1 or limit > MAX_LIMIT:
-        raise ApiError(400, "bad_request", f"limit must be 1–{MAX_LIMIT}", {"limit": limit})
+        raise ApiError(
+            400, "bad_request", f"limit must be 1–{MAX_LIMIT}", {"limit": limit}
+        )
     if offset < 0:
         raise ApiError(400, "bad_request", "offset must be >= 0", {"offset": offset})
 
     group = ((query.get("group") or [""])[0] or "passage").strip()
     if group not in {"passage", "article"}:
-        raise ApiError(400, "bad_request", "group must be passage or article", {"group": group})
+        raise ApiError(
+            400, "bad_request", "group must be passage or article", {"group": group}
+        )
 
     return SearchParams(
         q=raw_q,
@@ -157,7 +167,9 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
             )
             if value
         ),
-        has_images=parse_bool((query.get("has_images") or [None])[0], name="has_images"),
+        has_images=parse_bool(
+            (query.get("has_images") or [None])[0], name="has_images"
+        ),
         limit=limit,
         offset=offset,
         group=group,
@@ -176,9 +188,7 @@ def fts_query(raw: str) -> str:
     """
     words = _WORD_RE.findall(raw)
     if not words:
-        raise ApiError(
-            400, "bad_request", "q contains no searchable words", {"q": raw}
-        )
+        raise ApiError(400, "bad_request", "q contains no searchable words", {"q": raw})
     return " ".join(f'"{word}"' for word in words)
 
 
@@ -261,7 +271,9 @@ def _filters(params: SearchParams) -> tuple[str, list[Any]]:
     return (" AND ".join(clauses), values)
 
 
-def search(conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict]) -> dict:
+def search(
+    conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict]
+) -> dict:
     import time
 
     started = time.perf_counter()

@@ -34,12 +34,32 @@ def _write_archive(root: Path) -> list[dict]:
     raw.mkdir(parents=True)
     rows = []
     for message_id, subject, body, images in (
-        (152, "IBM Misses (Stratechery Update 7-15-2026)", BODY,
-         [{"url_path": "https://example.test/header.png",
-           "asset": "assets/aaaa.png", "sha256": "a" * 64, "bytes": 100}]),
-        (30564, "749209 is your Stratechery access code", ACCESS_BODY,
-         [{"url_path": "https://example.test/none.png",
-           "asset": None, "sha256": None, "bytes": None}]),
+        (
+            152,
+            "IBM Misses (Stratechery Update 7-15-2026)",
+            BODY,
+            [
+                {
+                    "url_path": "https://example.test/header.png",
+                    "asset": "assets/aaaa.png",
+                    "sha256": "a" * 64,
+                    "bytes": 100,
+                }
+            ],
+        ),
+        (
+            30564,
+            "749209 is your Stratechery access code",
+            ACCESS_BODY,
+            [
+                {
+                    "url_path": "https://example.test/none.png",
+                    "asset": None,
+                    "sha256": None,
+                    "bytes": None,
+                }
+            ],
+        ),
     ):
         message = EmailMessage()
         message["Subject"] = subject
@@ -81,7 +101,9 @@ def built(tmp_path, monkeypatch):
             (derived / "152.txt").write_text(BODY + "\n", encoding="utf-8")
     metas = build_index.load_metas(derived)
     expected_chunks = sum(
-        len(chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8")))
+        len(
+            chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8"))
+        )
         for m in metas
     )
     monkeypatch.setattr(
@@ -110,12 +132,11 @@ def test_schema_is_populated(built):
     try:
         assert conn.execute("SELECT count(*) FROM articles").fetchone()[0] == 2
         assert conn.execute("SELECT count(*) FROM corpus_stats").fetchone()[0] == 1
-        assert conn.execute(
-            "SELECT searchable_articles FROM corpus_stats"
-        ).fetchone()[0] == 1
-        assert conn.execute(
-            "SELECT transactional FROM corpus_stats"
-        ).fetchone()[0] == 1
+        assert (
+            conn.execute("SELECT searchable_articles FROM corpus_stats").fetchone()[0]
+            == 1
+        )
+        assert conn.execute("SELECT transactional FROM corpus_stats").fetchone()[0] == 1
     finally:
         conn.close()
 
@@ -202,8 +223,19 @@ def test_under_represented_year_note_ignores_partial_boundary_years():
     from stratechery_search.build_index import _stats_notes
 
     notes = _stats_notes(
-        {2016: 1, 2017: 51, 2018: 156, 2019: 184, 2020: 193, 2021: 201,
-         2022: 201, 2023: 180, 2024: 186, 2025: 181, 2026: 157}
+        {
+            2016: 1,
+            2017: 51,
+            2018: 156,
+            2019: 184,
+            2020: 193,
+            2021: 201,
+            2022: 201,
+            2023: 180,
+            2024: 186,
+            2025: 181,
+            2026: 157,
+        }
     )
     assert [note["year"] for note in notes] == [2017]
     assert notes[0]["articles"] == 51

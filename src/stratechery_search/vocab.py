@@ -42,7 +42,9 @@ def load_vocabulary(path: Path) -> dict[str, dict]:
     current: dict | None = None
 
     for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw_line.split("#", 1)[0].rstrip() if "#" in raw_line else raw_line.rstrip()
+        line = (
+            raw_line.split("#", 1)[0].rstrip() if "#" in raw_line else raw_line.rstrip()
+        )
         if not line.strip():
             continue
         if line.strip() == "terms:":

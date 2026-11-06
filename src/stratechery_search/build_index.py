@@ -253,7 +253,9 @@ def build(
                     1 if m.get("has_tables") else 0,
                     1 if m.get("is_transactional") else 0,
                     m.get("archive_sha256"),
-                    int(m["archive_bytes"]) if m.get("archive_bytes") is not None else None,
+                    int(m["archive_bytes"])
+                    if m.get("archive_bytes") is not None
+                    else None,
                     m.get("text_sha256"),
                     m.get("normalizer_version"),
                 )
@@ -265,7 +267,9 @@ def build(
         chunk_rows: list[tuple] = []
         for meta in metas:
             message_id = int(meta["message_id"])
-            rows = chunk_article(message_id, texts[message_id], meta.get("subject") or "")
+            rows = chunk_article(
+                message_id, texts[message_id], meta.get("subject") or ""
+            )
             for row in rows:
                 chunk_rows.append(
                     (
@@ -327,12 +331,16 @@ def build(
             by_year_articles[year] += 1
             by_year_chars[year] += int(meta.get("chars") or 0)
             by_kind_articles[meta.get("kind") or "other"] += 1
-            by_kind_chunks[meta.get("kind") or "other"] += chunks_per_article[message_id]
+            by_kind_chunks[meta.get("kind") or "other"] += chunks_per_article[
+                message_id
+            ]
             by_sender[meta.get("sender") or ""] += 1
 
         transactional = sum(1 for m in metas if m.get("is_transactional"))
         distinct_assets = {
-            img["asset"] for row in index_rows.values() for img in _image_rows(row)
+            img["asset"]
+            for row in index_rows.values()
+            for img in _image_rows(row)
             if img["asset"]
         }
         articles_with_images = sum(1 for m in metas if int(m.get("n_images") or 0) > 0)
@@ -359,11 +367,15 @@ def build(
         )
         conn.executemany(
             "INSERT INTO stats_by_year (year, articles, chars) VALUES (?,?,?)",
-            sorted((y, by_year_articles[y], by_year_chars[y]) for y in by_year_articles),
+            sorted(
+                (y, by_year_articles[y], by_year_chars[y]) for y in by_year_articles
+            ),
         )
         conn.executemany(
             "INSERT INTO stats_by_kind (kind, articles, chunks) VALUES (?,?,?)",
-            sorted((k, by_kind_articles[k], by_kind_chunks[k]) for k in by_kind_articles),
+            sorted(
+                (k, by_kind_articles[k], by_kind_chunks[k]) for k in by_kind_articles
+            ),
         )
         conn.executemany(
             "INSERT INTO stats_by_sender (sender, articles) VALUES (?,?)",
@@ -469,21 +481,30 @@ def _evaluate(
 
     articles = cur.execute("SELECT count(*) FROM articles").fetchone()[0]
     gates.append(
-        _gate("article_rows", EXPECTED["articles"], articles, articles == EXPECTED["articles"])
+        _gate(
+            "article_rows",
+            EXPECTED["articles"],
+            articles,
+            articles == EXPECTED["articles"],
+        )
     )
 
     transactional = cur.execute(
         "SELECT count(*) FROM articles WHERE is_transactional = 1"
     ).fetchone()[0]
-    searchable = cur.execute(
-        "SELECT searchable_articles FROM corpus_stats"
-    ).fetchone()[0]
+    searchable = cur.execute("SELECT searchable_articles FROM corpus_stats").fetchone()[
+        0
+    ]
     gates.append(
         _gate(
             "searchable_articles",
-            {"value": EXPECTED["searchable_articles"], "equals": "articles - transactional"},
+            {
+                "value": EXPECTED["searchable_articles"],
+                "equals": "articles - transactional",
+            },
             {"value": searchable, "computed": articles - transactional},
-            searchable == EXPECTED["searchable_articles"] and searchable == articles - transactional,
+            searchable == EXPECTED["searchable_articles"]
+            and searchable == articles - transactional,
         )
     )
 
@@ -497,7 +518,9 @@ def _evaluate(
         )
     )
 
-    empty = cur.execute("SELECT count(*) FROM chunks WHERE length(trim(text)) = 0").fetchone()[0]
+    empty = cur.execute(
+        "SELECT count(*) FROM chunks WHERE length(trim(text)) = 0"
+    ).fetchone()[0]
     gates.append(_gate("no_empty_chunks", 0, empty, empty == 0))
 
     bad_tail = []
@@ -527,7 +550,8 @@ def _evaluate(
 
     fts_count = cur.execute("SELECT count(*) FROM chunks_fts").fetchone()[0]
     control = cur.execute(
-        "SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?", (CONTROL_QUERY_TERM,)
+        "SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?",
+        (CONTROL_QUERY_TERM,),
     ).fetchone()[0]
     gates.append(
         _gate(
@@ -555,7 +579,9 @@ def _evaluate(
     )
 
     image_rows = cur.execute("SELECT count(*) FROM article_images").fetchone()[0]
-    expected_image_rows = cur.execute("SELECT coalesce(sum(n_images), 0) FROM articles").fetchone()[0]
+    expected_image_rows = cur.execute(
+        "SELECT coalesce(sum(n_images), 0) FROM articles"
+    ).fetchone()[0]
     distinct_assets = cur.execute(
         "SELECT count(DISTINCT asset) FROM article_images WHERE asset IS NOT NULL"
     ).fetchone()[0]
@@ -586,18 +612,28 @@ def _evaluate(
     )
 
     singleton = cur.execute("SELECT count(*) FROM corpus_stats").fetchone()[0]
-    year_sum = cur.execute("SELECT coalesce(sum(articles), 0) FROM stats_by_year").fetchone()[0]
+    year_sum = cur.execute(
+        "SELECT coalesce(sum(articles), 0) FROM stats_by_year"
+    ).fetchone()[0]
     stats_transactional = cur.execute(
         "SELECT transactional FROM corpus_stats"
     ).fetchone()[0]
     gates.append(
         _gate(
             "stats_present",
-            {"singleton": 1, "sum_by_year": EXPECTED["articles"],
-             "transactional": transactional},
-            {"singleton": singleton, "sum_by_year": year_sum,
-             "transactional": stats_transactional},
-            singleton == 1 and year_sum == articles and stats_transactional == transactional,
+            {
+                "singleton": 1,
+                "sum_by_year": EXPECTED["articles"],
+                "transactional": transactional,
+            },
+            {
+                "singleton": singleton,
+                "sum_by_year": year_sum,
+                "transactional": stats_transactional,
+            },
+            singleton == 1
+            and year_sum == articles
+            and stats_transactional == transactional,
         )
     )
 
@@ -621,7 +657,7 @@ def _evaluate(
     # Chunk text must still hash to what it claims, and the chunk set must add
     # up to the derived text it came from.
     hash_mismatch = 0
-    for (text, claimed) in cur.execute("SELECT text, text_sha256 FROM chunks"):
+    for text, claimed in cur.execute("SELECT text, text_sha256 FROM chunks"):
         if sha256_text(text) != claimed:
             hash_mismatch += 1
     gates.append(_gate("chunk_hashes", 0, hash_mismatch, hash_mismatch == 0))
@@ -722,8 +758,12 @@ def main(argv: list[str] | None = None) -> int:
 
     failed = [gate for gate in report["gates"] if not gate["pass"]]
     for gate in report["gates"]:
-        print(f"{'PASS' if gate['pass'] else 'FAIL'} {gate['gate']}: {gate['observed']}")
-    print(f"installed: {report.get('installed')} -> {args.out if report.get('installed') else '(not installed)'}")
+        print(
+            f"{'PASS' if gate['pass'] else 'FAIL'} {gate['gate']}: {gate['observed']}"
+        )
+    print(
+        f"installed: {report.get('installed')} -> {args.out if report.get('installed') else '(not installed)'}"
+    )
     return 1 if failed else 0
 
 

@@ -114,7 +114,9 @@ def build_corpus(tmp_path: Path, monkeypatch) -> tuple[Path, Path, Path]:
         (derived / f"{message_id}.txt").write_text(body + "\n", encoding="utf-8")
     metas = build_index.load_metas(derived)
     expected_chunks = sum(
-        len(chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8")))
+        len(
+            chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8"))
+        )
         for m in metas
     )
     monkeypatch.setattr(
@@ -156,7 +158,8 @@ def service(corpus):
     # two text-based ones so the static-type contract can be asserted without
     # committing PNGs to the test tree.
     (dist / "favicon.svg").write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>', encoding="utf-8"
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>',
+        encoding="utf-8",
     )
     (dist / "site.webmanifest").write_text(
         '{"name": "Stratechery Search", "start_url": "/"}', encoding="utf-8"

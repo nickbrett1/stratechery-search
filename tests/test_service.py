@@ -41,7 +41,15 @@ def test_search_shape_is_the_contract(service):
     status, body = get(f"{service}/search?q=aggregation")
     assert status == 200
 
-    assert set(body) == {"query", "total", "limit", "offset", "took_ms", "results", "facets"}
+    assert set(body) == {
+        "query",
+        "total",
+        "limit",
+        "offset",
+        "took_ms",
+        "results",
+        "facets",
+    }
     assert body["query"]["raw"] == "aggregation"
     assert body["query"]["rewritten"] == '"aggregation"'
     assert body["query"]["expansions"] == []
@@ -122,9 +130,13 @@ def test_grouped_search_folds_an_articles_passages_under_one_row(service):
     lead = body["results"][0]
     assert lead["message_id"] == 152
     assert lead["matched_passages"] == len(passages["results"])
-    assert lead["more_total"] == len(lead["more_passages"]) == len(passages["results"]) - 1
+    assert (
+        lead["more_total"] == len(lead["more_passages"]) == len(passages["results"]) - 1
+    )
     assert all(chunk["message_id"] == 152 for chunk in lead["more_passages"])
-    assert lead["chunk_id"] not in {chunk["chunk_id"] for chunk in lead["more_passages"]}
+    assert lead["chunk_id"] not in {
+        chunk["chunk_id"] for chunk in lead["more_passages"]
+    }
     # The lead is the best-ranked chunk of the article, not merely the first one.
     assert lead["score"] >= max(chunk["score"] for chunk in lead["more_passages"])
 
@@ -154,8 +166,16 @@ def test_pagination_is_reported(service):
 
 @pytest.mark.parametrize(
     "query",
-    ["", "q=", "q=the&kind=nonsense", "q=the&limit=0", "q=the&limit=101",
-     "q=the&offset=-1", "q=the&from=July", "q=the&has_images=maybe"],
+    [
+        "",
+        "q=",
+        "q=the&kind=nonsense",
+        "q=the&limit=0",
+        "q=the&limit=101",
+        "q=the&offset=-1",
+        "q=the&from=July",
+        "q=the&has_images=maybe",
+    ],
 )
 def test_bad_parameters_are_400(service, query):
     status, body = get(f"{service}/search?{query}")
@@ -169,7 +189,7 @@ def test_punctuation_never_becomes_fts_syntax(service):
     status, body = get(f"{service}/search?q=%22quoted%22%20AND%20-or%20*the*")
     assert status == 200
     # Operators and wildcards are read as words, never as FTS5 syntax.
-    assert body["query"]["rewritten"] == '"quoted" "AND" "or" "the"' 
+    assert body["query"]["rewritten"] == '"quoted" "AND" "or" "the"'
 
 
 def test_article_shape_is_the_contract(service):
@@ -195,7 +215,11 @@ def test_article_shape_is_the_contract(service):
     }
     assert body["message_id"] == 152
     assert body["is_transactional"] is False
-    assert set(body["derived"]) == {"flattener_version", "normalizer_version", "text_sha256"}
+    assert set(body["derived"]) == {
+        "flattener_version",
+        "normalizer_version",
+        "text_sha256",
+    }
     assert set(body["archive"]) == {"sha256", "bytes", "path"}
     assert body["archive"]["path"] == "raw/152.eml"
     assert body["text"].startswith("The aggregation theory")
@@ -247,7 +271,9 @@ def test_stats_shape_is_the_contract(service):
 
 
 def test_asset_is_served_with_an_image_content_type(service):
-    with urllib.request.urlopen(f"{service}/asset/aaaa0000.png", timeout=10) as response:
+    with urllib.request.urlopen(
+        f"{service}/asset/aaaa0000.png", timeout=10
+    ) as response:
         assert response.status == 200
         assert response.headers["Content-Type"] == "image/png"
         assert response.read() == bytes.fromhex("89504e470d0a1a0a") + b"\x00" * 16
@@ -297,7 +323,9 @@ def test_unbuilt_index_is_503(tmp_path):
 
 
 def test_the_service_has_no_write_path(service):
-    request = urllib.request.Request(f"{service}/search?q=the", method="POST", data=b"{}")
+    request = urllib.request.Request(
+        f"{service}/search?q=the", method="POST", data=b"{}"
+    )
     try:
         urllib.request.urlopen(request, timeout=10)
     except urllib.error.HTTPError as error:

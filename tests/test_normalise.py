@@ -89,11 +89,16 @@ You are receiving this email because you are subscribed to Example ( https://exa
 def test_ascii_table_padding_is_collapsed_to_prose():
     raw = "\n".join(
         [
-            "| | | | | " + "************************************************************************************************" + " |",
+            "| | | | | "
+            + "************************************************************************************************"
+            + " |",
             "| | | | | A Synthetic Title" + " " * 200 + "|",
             "| | | | | " + "********************************" + " |",
             "| | | | | Tuesday, December 21, 2021" + " " * 150 + "|",
-            "| | | | | " + "A paragraph that was padded out by the HTML-to-text renderer." + " " * 400 + "|",
+            "| | | | | "
+            + "A paragraph that was padded out by the HTML-to-text renderer."
+            + " " * 400
+            + "|",
             "| | | | | " + "+" + "-" * 1000 + "+",
             "| | | | | " + "Another paragraph." + " " * 400 + "|",
         ]

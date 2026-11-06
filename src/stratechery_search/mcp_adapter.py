@@ -68,7 +68,9 @@ TOOLS = [
 class HttpError(RuntimeError):
     """The service answered with an error body, or did not answer at all."""
 
-    def __init__(self, message: str, status: int = 0, code: str = "upstream_error") -> None:
+    def __init__(
+        self, message: str, status: int = 0, code: str = "upstream_error"
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
@@ -172,7 +174,9 @@ def handle(message: dict, base_url: str) -> dict | None:
     if method == "tools/call":
         params = message.get("params") or {}
         try:
-            result = call_tool(params.get("name", ""), params.get("arguments") or {}, base_url)
+            result = call_tool(
+                params.get("name", ""), params.get("arguments") or {}, base_url
+            )
         except HttpError as error:
             return {
                 "jsonrpc": "2.0",
@@ -186,7 +190,9 @@ def handle(message: dict, base_url: str) -> dict | None:
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
-                "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+                "content": [
+                    {"type": "text", "text": json.dumps(result, ensure_ascii=False)}
+                ],
                 "isError": False,
             },
         }

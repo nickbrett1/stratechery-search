@@ -158,7 +158,10 @@ class Handler(BaseHTTPRequestHandler):
             fn(connection)
         except sqlite3.Error as exc:
             raise api.ApiError(
-                503, "index_degraded", "the index could not be queried", {"detail": str(exc)}
+                503,
+                "index_degraded",
+                "the index could not be queried",
+                {"detail": str(exc)},
             ) from exc
         finally:
             connection.close()
@@ -179,7 +182,9 @@ class Handler(BaseHTTPRequestHandler):
             raise api.ApiError(400, "bad_request", "bad asset name", {"value": name})
         extension = Path(name).suffix.lower()
         if extension not in ASSET_EXTENSIONS:
-            raise api.ApiError(404, "not_found", "unsupported asset type", {"value": name})
+            raise api.ApiError(
+                404, "not_found", "unsupported asset type", {"value": name}
+            )
         asset_path = (self.config.archive_root / "assets" / name).resolve()
         assets_root = (self.config.archive_root / "assets").resolve()
         if assets_root not in asset_path.parents or not asset_path.is_file():
@@ -195,7 +200,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_static_or_404(self, path: str) -> None:
         candidate = self.config.static_dir / path.lstrip("/")
-        if candidate.is_file() and self.config.static_dir.resolve() in candidate.resolve().parents:
+        if (
+            candidate.is_file()
+            and self.config.static_dir.resolve() in candidate.resolve().parents
+        ):
             self._serve_static(path.lstrip("/"))
             return
         # Unknown non-API path: the app owns its routes through the querystring,
@@ -213,7 +221,9 @@ class Handler(BaseHTTPRequestHandler):
                 {"static_dir": str(self.config.static_dir)},
             )
         data = target.read_bytes()
-        content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        content_type = (
+            mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        )
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))

@@ -29,11 +29,15 @@ def test_get_article_matches_the_endpoint(service):
 
 
 def test_initialize_and_tools_list_are_mcp_shaped(service):
-    initialized = mcp_adapter.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"}, service)
+    initialized = mcp_adapter.handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize"}, service
+    )
     assert initialized["result"]["protocolVersion"]
     assert initialized["result"]["capabilities"] == {"tools": {}}
 
-    listed = mcp_adapter.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, service)
+    listed = mcp_adapter.handle(
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, service
+    )
     assert [tool["name"] for tool in listed["result"]["tools"]] == [
         "search_corpus",
         "get_article",
@@ -68,4 +72,9 @@ def test_upstream_error_is_reported_not_swallowed(service):
 
 
 def test_notifications_get_no_response(service):
-    assert mcp_adapter.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}, service) is None
+    assert (
+        mcp_adapter.handle(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}, service
+        )
+        is None
+    )

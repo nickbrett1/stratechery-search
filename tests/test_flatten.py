@@ -69,7 +69,9 @@ def test_flatten_writes_text_meta_and_report(tmp_path):
     archive = make_archive(tmp_path)
     out = tmp_path / "derived"
 
-    assert main(["--archive", str(archive), "--out", str(out)]) == 1  # gates fail on 1 row
+    assert (
+        main(["--archive", str(archive), "--out", str(out)]) == 1
+    )  # gates fail on 1 row
 
     text = (out / "107.txt").read_text(encoding="utf-8")
     assert "synthetic" in text
@@ -112,10 +114,14 @@ def test_flatten_is_byte_identical_on_re_run(tmp_path):
 
 
 def test_read_index_and_classifiers():
-    assert classify_transactional("207425 is your Stratechery access code") == "access_code"
+    assert (
+        classify_transactional("207425 is your Stratechery access code")
+        == "access_code"
+    )
     assert classify_transactional("Your receipt from Stratechery") == "receipt"
     assert (
-        classify_transactional("Your Stratechery subscription will renew soon.") == "renewal"
+        classify_transactional("Your Stratechery subscription will renew soon.")
+        == "renewal"
     )
     assert classify_transactional("An Interview With Someone") is None
 

@@ -53,7 +53,9 @@ def test_chunk_ids_are_ordinal_and_stable():
     assert [row["chunk_id"] for row in first] == [
         f"152:{index}" for index in range(len(first))
     ]
-    assert [row["text_sha256"] for row in first] == [row["text_sha256"] for row in second]
+    assert [row["text_sha256"] for row in first] == [
+        row["text_sha256"] for row in second
+    ]
     assert all(row["subject"] for row in first)
     assert all(row["embed_model"] is None for row in first)
 

@@ -56,9 +56,33 @@ EXPECTED = {
 #: gate exempts them by id so a *new* short body still fails the build.
 EDITORIAL_NOTE_IDS = frozenset(
     {
-        2889, 7268, 25125, 32811, 38679, 48785, 56850, 59618, 63565, 64753,
-        66009, 67124, 71582, 71880, 77996, 77997, 80095, 80827, 81531, 82527,
-        83012, 85772, 86159, 86693, 92251, 93053, 124413,
+        2889,
+        7268,
+        25125,
+        32811,
+        38679,
+        48785,
+        56850,
+        59618,
+        63565,
+        64753,
+        66009,
+        67124,
+        71582,
+        71880,
+        77996,
+        77997,
+        80095,
+        80827,
+        81531,
+        82527,
+        83012,
+        85772,
+        86159,
+        86693,
+        92251,
+        93053,
+        124413,
     }
 )
 
@@ -245,7 +269,9 @@ def build_report(
     distinct_assets = {img["asset"] for img in images if img.get("asset")}
     null_assets = [img for img in images if not img.get("asset")]
 
-    era_short: dict[str, dict[str, int]] = defaultdict(lambda: {"articles": 0, "short": 0})
+    era_short: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"articles": 0, "short": 0}
+    )
     for meta in metas:
         if meta["is_transactional"]:
             continue
@@ -302,10 +328,14 @@ def build_report(
                 1
                 for m in metas
                 for line in m["_text"].splitlines()
-                if line.strip() and set(line.strip()) <= set("-*_=") and len(line.strip()) >= 3
+                if line.strip()
+                and set(line.strip()) <= set("-*_=")
+                and len(line.strip()) >= 3
             ),
             not any(
-                line.strip() and set(line.strip()) <= set("-*_=") and len(line.strip()) >= 3
+                line.strip()
+                and set(line.strip()) <= set("-*_=")
+                and len(line.strip()) >= 3
                 for m in metas
                 for line in m["_text"].splitlines()
             ),
@@ -334,7 +364,9 @@ def build_report(
             f"{EXPECTED['est_tokens_min']}–{EXPECTED['est_tokens_max']} est_tokens",
             {"chars": total_chars, "est_tokens": total_tokens},
             EXPECTED["total_chars_min"] <= total_chars <= EXPECTED["total_chars_max"]
-            and EXPECTED["est_tokens_min"] <= total_tokens <= EXPECTED["est_tokens_max"],
+            and EXPECTED["est_tokens_min"]
+            <= total_tokens
+            <= EXPECTED["est_tokens_max"],
         ),
         _gate(
             "era_balance",
@@ -348,9 +380,13 @@ def build_report(
                 "count": EXPECTED["transactional"],
                 "by_category": EXPECTED["transactional_by_category"],
             },
-            {"count": len(transactional), "by_category": dict(sorted(categories.items()))},
+            {
+                "count": len(transactional),
+                "by_category": dict(sorted(categories.items())),
+            },
             len(transactional) == EXPECTED["transactional"]
-            and dict(sorted(categories.items())) == EXPECTED["transactional_by_category"],
+            and dict(sorted(categories.items()))
+            == EXPECTED["transactional_by_category"],
             "revised from design §1's 4 by the full-corpus run, approved 2026-11-05",
         ),
         _gate(
@@ -491,7 +527,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     report_path = args.report or args.out / "flatten-report.json"
-    report_json = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=1) + "\n"
+    report_json = (
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=1) + "\n"
+    )
     if not args.no_write:
         _write_atomic(report_path, report_json)
     else:
