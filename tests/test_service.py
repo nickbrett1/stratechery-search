@@ -157,6 +157,74 @@ def test_group_must_be_a_known_mode(service):
     assert body["error"]["code"] == "bad_request"
 
 
+def test_browsing_a_period_lists_its_articles_newest_first(service):
+    # An empty q with a filter is a question a reader asks — "2016 onwards" — not
+    # a request for everything. Nothing matched, so nothing is ranked either.
+    status, body = get(f"{service}/search?from=2016-01-01&group=article")
+    assert status == 200
+    assert body["browse"] is True
+    assert body["query"] == {"raw": "", "rewritten": "", "expansions": []}
+    assert body["article_total"] == 2
+    # The transaction mail is in 2024, so it is never in a browsed page.
+    assert [result["message_id"] for result in body["results"]] == [152, 85344]
+    assert body["results"][0]["sent_at"] > body["results"][1]["sent_at"]
+
+    result = body["results"][0]
+    # The card shows how the article opens, since there is no match to excerpt.
+    assert result["snippet"].startswith("The aggregation theory")
+    assert "<mark>" not in result["snippet"]
+    # Nothing "matched", so nothing is folded underneath.
+    assert result["more_total"] == 0
+    assert result["more_passages"] == []
+
+
+def test_a_browse_snippet_does_not_repeat_the_title():
+    # Several issues open by repeating the subject line, which the card shows an
+    # inch above the snippet; the archived subject carries a parenthetical tail the
+    # body copy does not, so the comparison cannot be a plain startswith().
+    from stratechery_search.api import _opening
+
+    subject = "IBM Misses, IBM's Mainframe Moat (Stratechery Update 7-15-2026)"
+    text = (
+        "IBM Misses, IBM's Mainframe Moat\n\nWednesday, July 15, 2026\n\nGood morning,"
+    )
+    assert _opening(text, subject) == "Wednesday, July 15, 2026 Good morning,"
+    # A dek before the title is the best possible preview and is left alone.
+    dek = "IBM announced preliminary results that spooked the software market."
+    assert _opening(dek + "\n\n" + text, subject).startswith("IBM announced")
+
+
+def test_browsing_pages_by_article_and_reports_the_filtered_total(service):
+    _, first = get(f"{service}/search?from=2016-01-01&group=article&limit=1&offset=0")
+    _, second = get(f"{service}/search?from=2016-01-01&group=article&limit=1&offset=1")
+    assert [result["message_id"] for result in first["results"]] == [152]
+    assert [result["message_id"] for result in second["results"]] == [85344]
+    # `total` counts passages and `article_total` counts articles, exactly as in
+    # the searched shape, so the pager needs no special case.
+    assert first["total"] > first["article_total"] == 2
+
+
+def test_browsing_facets_describe_the_browsed_set(service):
+    _, body = get(f"{service}/search?from=2016-01-01&group=article")
+    years = {bucket["year"]: bucket["articles"] for bucket in body["facets"]["by_year"]}
+    assert years == {2018: 1, 2026: 1}
+    kinds = {bucket["kind"] for bucket in body["facets"]["by_kind"]}
+    assert kinds == {"update"}
+
+
+def test_browsing_still_excludes_transactional_mail(service):
+    # 30564 is the only article in 2024 and it is an access code.
+    _, body = get(f"{service}/search?from=2024-01-01&to=2024-12-31&group=article")
+    assert body["results"] == []
+    assert body["article_total"] == 0
+
+
+def test_an_empty_q_with_nothing_to_narrow_it_is_still_400(service):
+    status, body = get(f"{service}/search?q=&group=article")
+    assert status == 400
+    assert body["error"]["message"] == "q is required"
+
+
 def test_pagination_is_reported(service):
     _, body = get(f"{service}/search?q=the&limit=1&offset=1")
     assert body["limit"] == 1

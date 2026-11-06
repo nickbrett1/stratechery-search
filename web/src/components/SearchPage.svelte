@@ -1,7 +1,9 @@
 <script>
   import { search } from "../lib/api.js";
+  import { remember } from "../lib/recent.js";
   import Facets from "./Facets.svelte";
   import ResultCard from "./ResultCard.svelte";
+  import StartingPoint from "./StartingPoint.svelte";
 
   let { query, onchange } = $props();
 
@@ -17,8 +19,22 @@
     typed = query.q;
   });
 
+  // A filter with no query is a question too ("browse 2019"), so the landing
+  // screen is only for when nothing at all has been asked. The API draws the same
+  // line: an empty q is 400 unless a filter narrows the corpus.
+  const intent = $derived(
+    Boolean(
+      query.q ||
+      query.from ||
+      query.to ||
+      (query.kind || []).length ||
+      (query.sender || []).length ||
+      query.hasImages,
+    ),
+  );
+
   $effect(() => {
-    if (!query.q) {
+    if (!intent) {
       response = null;
       return;
     }
@@ -45,7 +61,11 @@
 
   function submit(event) {
     event.preventDefault();
-    onchange({ ...query, q: typed.trim(), offset: 0 });
+    const term = typed.trim();
+    // Only what the reader typed is remembered: a query that arrived in a shared
+    // URL is not their search.
+    if (term) remember(term);
+    onchange({ ...query, q: term, offset: 0 });
   }
 
   // Active filters, as removable chips. The facet panel is a mile down a phone
@@ -161,12 +181,14 @@
 
 <!-- Placeholder copy is short on purpose: measured against the input on a 320px
      phone, where the old text ("…articles — aggregation theory, smiling curve…")
-     was cut off mid-word. The count matches /stats. -->
+     was cut off mid-word. No count in it: the landing screen prints the real one
+     from /stats, and a hardcoded number here only creates a second place to
+     forget to update. -->
 <form class="bar" onsubmit={submit}>
   <input
     type="search"
     bind:value={typed}
-    placeholder="Search 1,691 articles"
+    placeholder="Search the archive"
     aria-label="Search the corpus"
     autocapitalize="none"
     autocomplete="off"
@@ -199,108 +221,138 @@
   </p>
 {/if}
 
-<div class="layout" class:sheet-open={sheetOpen}>
-  <!-- Phone only: filters as chips, directly above the results, where the reader
+{#if intent}
+  <div class="layout" class:sheet-open={sheetOpen}>
+    <!-- Phone only: filters as chips, directly above the results, where the reader
        is. On a wide screen this row is hidden and the panel sits beside them. -->
-  {#if response}
-    <div class="chipsrow">
-      <button
-        class="chip filters"
-        type="button"
-        onclick={() => (sheetOpen = true)}
-      >
-        filters{activeFilters.length ? ` (${activeFilters.length})` : ""}
-        <span class="caret" aria-hidden="true">▾</span>
-      </button>
-      {#each activeFilters as chip (chip.key)}
+    {#if response}
+      <div class="chipsrow">
         <button
-          class="chip on"
+          class="chip filters"
           type="button"
-          onclick={() => removeFilter(chip.patch)}
+          onclick={() => (sheetOpen = true)}
         >
-          {chip.label}
-          <span class="x" aria-hidden="true">×</span>
-          <span class="sr">— remove filter</span>
+          filters{activeFilters.length ? ` (${activeFilters.length})` : ""}
+          <span class="caret" aria-hidden="true">▾</span>
         </button>
-      {/each}
-      {#if activeFilters.length}
+        {#each activeFilters as chip (chip.key)}
+          <button
+            class="chip on"
+            type="button"
+            onclick={() => removeFilter(chip.patch)}
+          >
+            {chip.label}
+            <span class="x" aria-hidden="true">×</span>
+            <span class="sr">— remove filter</span>
+          </button>
+        {/each}
+        {#if activeFilters.length}
+          <button class="chip clear" type="button" onclick={clearFilters}
+            >clear all</button
+          >
+        {/if}
+      </div>
+    {/if}
+
+    <section class="results" class:loading>
+      {#if response}
+        <div class="tally">
+          {#if response.browse}
+            <!-- Browsing has no match, so "passages" would count every chunk of
+               every article in the range and mean nothing to the reader. -->
+            <span
+              ><b class="num">{response.article_total.toLocaleString()}</b>
+              articles</span
+            >
+            <span class="hint num">newest first</span>
+          {:else}
+            <span
+              ><b class="num">{response.total.toLocaleString()}</b> passages</span
+            >
+            <span class="hint num"
+              >in {response.article_total ?? response.results.length} articles</span
+            >
+          {/if}
+          <span class="hint num">showing {pageStart}–{pageEnd}</span>
+          <span class="pill info num">{response.took_ms} ms</span>
+        </div>
+        <div class="cards">
+          {#each response.results as result (result.chunk_id)}
+            <ResultCard
+              {result}
+              passages={result.more_passages ?? []}
+              browse={response.browse ?? false}
+            />
+          {/each}
+        </div>
+        {#if response.results.length === 0}
+          <!-- Advice has to match the cause: a filter that excludes everything is
+             not fixed by typing fewer words. -->
+          {#if response.browse}
+            <p class="notice">
+              Nothing in this range.
+              <button class="inline" type="button" onclick={clearFilters}
+                >clear filters</button
+              >
+            </p>
+          {:else if activeFilters.length}
+            <p class="notice">
+              No passages match with these filters.
+              <button class="inline" type="button" onclick={clearFilters}
+                >clear filters</button
+              >
+            </p>
+          {:else}
+            <p class="notice">No passages match. Try fewer words.</p>
+          {/if}
+        {/if}
+        <nav class="seg pager">
+          <button
+            type="button"
+            disabled={!hasPrev}
+            onclick={() =>
+              onchange({
+                ...query,
+                offset: Math.max(0, response.offset - response.limit),
+              })}
+          >
+            ← previous
+          </button>
+          <button
+            type="button"
+            disabled={!hasNext}
+            onclick={() =>
+              onchange({ ...query, offset: response.offset + response.limit })}
+          >
+            next →
+          </button>
+        </nav>
+      {/if}
+    </section>
+
+    <div class="facetwrap" class:open={sheetOpen}>
+      <div class="sheethead">
+        <span class="micro">filters</span>
         <button class="chip clear" type="button" onclick={clearFilters}
           >clear all</button
         >
-      {/if}
-    </div>
-  {/if}
-
-  <section class="results" class:loading>
-    {#if response}
-      <div class="tally">
-        <span
-          ><b class="num">{response.total.toLocaleString()}</b> passages</span
-        >
-        <span class="hint num"
-          >in {response.article_total ?? response.results.length} articles</span
-        >
-        <span class="hint num">showing {pageStart}–{pageEnd}</span>
-        <span class="pill info num">{response.took_ms} ms</span>
-      </div>
-      <div class="cards">
-        {#each response.results as result (result.chunk_id)}
-          <ResultCard {result} passages={result.more_passages ?? []} />
-        {/each}
-      </div>
-      {#if response.results.length === 0}
-        <!-- Advice has to match the cause: a filter that excludes everything is
-             not fixed by typing fewer words. -->
-        {#if activeFilters.length}
-          <p class="notice">
-            No passages match with these filters.
-            <button class="inline" type="button" onclick={clearFilters}
-              >clear filters</button
-            >
-          </p>
-        {:else}
-          <p class="notice">No passages match. Try fewer words.</p>
-        {/if}
-      {/if}
-      <nav class="seg pager">
         <button
+          class="chip done"
           type="button"
-          disabled={!hasPrev}
-          onclick={() =>
-            onchange({
-              ...query,
-              offset: Math.max(0, response.offset - response.limit),
-            })}
+          onclick={() => (sheetOpen = false)}>done</button
         >
-          ← previous
-        </button>
-        <button
-          type="button"
-          disabled={!hasNext}
-          onclick={() =>
-            onchange({ ...query, offset: response.offset + response.limit })}
-        >
-          next →
-        </button>
-      </nav>
-    {/if}
-  </section>
-
-  <div class="facetwrap" class:open={sheetOpen}>
-    <div class="sheethead">
-      <span class="micro">filters</span>
-      <button class="chip clear" type="button" onclick={clearFilters}
-        >clear all</button
-      >
-      <button
-        class="chip done"
-        type="button"
-        onclick={() => (sheetOpen = false)}>done</button
-      >
+      </div>
+      <Facets
+        facets={response?.facets ?? null}
+        {query}
+        onchange={facetChange}
+      />
     </div>
-    <Facets facets={response?.facets ?? null} {query} onchange={facetChange} />
   </div>
-</div>
+{:else}
+  <!-- Nothing asked yet: the one screen that had no way in. -->
+  <StartingPoint {query} {onchange} />
+{/if}
 
 {#if sheetOpen}
   <!-- Tapping the dimmed results behind the sheet is the other way out. -->

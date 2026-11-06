@@ -6,7 +6,10 @@
   // is trusted, the prose inside it is not markup.
   // `passages` are the other chunks of the same article that matched: folded
   // under the best-ranked one so a page reads as articles, not as repetitions.
-  let { result, passages = [] } = $props();
+  // `browse` means there was no query to match: the snippet is how the article
+  // opens rather than an excerpt around a hit, so the footer cannot point at a
+  // passage.
+  let { result, passages = [], browse = false } = $props();
 
   let open = $state(false);
 
@@ -64,9 +67,9 @@
        index internals — three lines of developer telemetry under every snippet
        in a product read on a phone. -->
   <footer>
-    <a class="num" href={result.article_href}
-      >passage {ordinal(result.chunk_id)} →</a
-    >
+    <a class="num" href={result.article_href}>
+      {#if browse}read →{:else}passage {ordinal(result.chunk_id)} →{/if}
+    </a>
   </footer>
 
   {#if passages.length}

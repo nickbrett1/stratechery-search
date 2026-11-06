@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -110,12 +111,24 @@ def _check_date(value: str | None, name: str) -> str | None:
     return value
 
 
+def _has_filter(params: SearchParams) -> bool:
+    """Whether anything narrows the corpus without a query.
+
+    This is what separates "browse 2019" from "give me everything", and it is the
+    condition under which an empty ``q`` is legitimate (see ``_browse``).
+    """
+    return bool(
+        params.start
+        or params.end
+        or params.kinds
+        or params.senders
+        or params.has_images is not None
+    )
+
+
 def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
     """Turn raw querystring pairs into validated parameters."""
     raw_q = (query.get("q") or [""])[0].strip()
-    if not raw_q:
-        # An empty q is 400, not "browse everything": browsing is /stats' job.
-        raise ApiError(400, "bad_request", "q is required", {"param": "q"})
     if len(raw_q) > MAX_QUERY_CHARS:
         raise ApiError(
             400,
@@ -153,7 +166,7 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
             400, "bad_request", "group must be passage or article", {"group": group}
         )
 
-    return SearchParams(
+    params = SearchParams(
         q=raw_q,
         start=_check_date((query.get("from") or [None])[0], "from"),
         end=_check_date((query.get("to") or [None])[0], "to"),
@@ -174,6 +187,13 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
         offset=offset,
         group=group,
     )
+    if not params.q and not _has_filter(params):
+        # An empty q is 400 unless a filter narrows the corpus. "Everything" is
+        # not a query — /stats answers it in aggregate — but "2019" and "every
+        # interview" are questions a reader asks, and the UI's year and kind
+        # chips ask them before anyone has typed anything.
+        raise ApiError(400, "bad_request", "q is required", {"param": "q"})
+    return params
 
 
 _WORD_RE = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
@@ -271,12 +291,126 @@ def _filters(params: SearchParams) -> tuple[str, list[Any]]:
     return (" AND ".join(clauses), values)
 
 
+BROWSE_SNIPPET_CHARS = 240
+
+
+_SUBJECT_TAIL = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _opening(text: str | None, subject: str | None) -> str:
+    """How an article opens, for a card that has no match to excerpt.
+
+    Some issues begin by repeating the subject line, which the card already shows
+    an inch above the snippet, so that repeat is dropped when it is exact. The rest
+    is collapsed to one line: ``snippet()`` leaves newlines in, and the browser
+    would collapse them anyway.
+    """
+    body = (text or "").lstrip()
+    # The archived subject carries the "(Stratechery Update 7-15-2026)" tail that
+    # the card strips for display, while the title inside the body does not, so the
+    # comparison has to be against the untailed title or it never matches.
+    title = _SUBJECT_TAIL.sub("", subject or "").strip()
+    if title and body.startswith(title):
+        body = body[len(title) :].lstrip(" \n:-—")
+    return " ".join(body.split())[:BROWSE_SNIPPET_CHARS]
+
+
+def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> dict:
+    """The corpus newest-first under a filter, with no query and no ranking.
+
+    An empty ``q`` only reaches here when ``_has_filter`` is true, so this answers
+    "2019" or "every interview" rather than "everything". There is nothing to rank
+    against — and ``bm25()`` cannot be computed without a MATCH anyway — so the
+    order is the archive's own: newest first, one row per article under
+    ``group=article`` (each row shows how the article opens), one row per passage
+    otherwise.
+
+    Facets are still computed, because a reader who has chosen 2019 wants to see
+    that 2019 is what they chose and how the other years compare.
+    """
+    where, values = _filters(params)
+    total, article_total = conn.execute(
+        "SELECT count(*), count(DISTINCT c.message_id)"
+        " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+        f" WHERE {where}",
+        values,
+    ).fetchone()
+
+    if params.group != "article":
+        rows = conn.execute(
+            "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
+            " a.subject, a.kind, a.sender, 0.0 AS rank,"
+            " c.text AS snip"
+            " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+            f" WHERE {where}"
+            " ORDER BY a.sent_at DESC, c.message_id DESC, c.ordinal"
+            " LIMIT ? OFFSET ?",
+            [*values, params.limit, params.offset],
+        ).fetchall()
+        results = [_result((*row[:9], _opening(row[9], row[5]))) for row in rows]
+    else:
+        page = [
+            row[0]
+            for row in conn.execute(
+                "SELECT a.message_id FROM articles a"
+                f" WHERE {where} ORDER BY a.sent_at DESC, a.message_id DESC"
+                " LIMIT ? OFFSET ?",
+                [*values, params.limit, params.offset],
+            )
+        ]
+        # Every filter lives on `articles`, so the page is chosen without touching
+        # chunks; the lead chunk of each chosen article is fetched afterwards.
+        # Deliberately not `WHERE c.ordinal = 0`: the row is the article's first
+        # passage because it is the lowest ordinal in the rows that came back, not
+        # because the chunker promised to start at zero.
+        results = []
+        if page:
+            rows = conn.execute(
+                "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char,"
+                " a.sent_at, a.subject, a.kind, a.sender, 0.0 AS rank,"
+                " c.text AS snip"
+                " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+                f" WHERE c.message_id IN ({','.join('?' * len(page))})"
+                " ORDER BY c.message_id, c.ordinal",
+                page,
+            ).fetchall()
+            first: dict[int, tuple] = {}
+            for row in rows:
+                first.setdefault(row[1], row)
+            for message_id in page:
+                row = first.get(message_id)
+                if row is None:
+                    continue
+                results.append(
+                    {
+                        **_result((*row[:9], _opening(row[9], row[5]))),
+                        # Nothing "matched", so nothing is folded underneath: the
+                        # count is what the card needs to not claim otherwise.
+                        "matched_passages": 1,
+                        "more_total": 0,
+                        "more_passages": [],
+                    }
+                )
+
+    return {
+        "query": {"raw": "", "rewritten": "", "expansions": []},
+        "browse": True,
+        "total": total,
+        "article_total": article_total,
+        "limit": params.limit,
+        "offset": params.offset,
+        "took_ms": int((time.perf_counter() - started) * 1000),
+        "results": results,
+        "facets": _facets(conn, None, where, values),
+    }
+
+
 def search(
     conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict]
 ) -> dict:
-    import time
-
     started = time.perf_counter()
+    if not params.q:
+        return _browse(conn, params, started)
     if vocab:
         match, expansions = expand_query(params.q, vocab)
     else:
@@ -420,7 +554,7 @@ def _grouped(
 
 
 def _facets(
-    conn: sqlite3.Connection, match: str, where: str, values: list[Any]
+    conn: sqlite3.Connection, match: str | None, where: str, values: list[Any]
 ) -> dict:
     """Facet counts under the current filter, from the same statement family.
 
@@ -429,17 +563,26 @@ def _facets(
     which is the classic faceted-search bug.
     """
     where_sql = f" AND {where}" if where else ""
-    base = (
-        " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
-        " JOIN articles a ON a.message_id = c.message_id"
-        f" WHERE chunks_fts MATCH ?{where_sql}"
-    )
+    if match is None:
+        # Browse mode: no MATCH, so the same counts run over the filtered corpus.
+        base = (
+            " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+            f" WHERE {where or '1 = 1'}"
+        )
+        args: list[Any] = list(values)
+    else:
+        base = (
+            " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
+            " JOIN articles a ON a.message_id = c.message_id"
+            f" WHERE chunks_fts MATCH ?{where_sql}"
+        )
+        args = [match, *values]
 
     def grouped(expression: str) -> list[tuple]:
         return conn.execute(
             f"SELECT {expression} AS bucket, count(DISTINCT c.message_id), count(*)"
             f"{base} GROUP BY bucket ORDER BY bucket",
-            [match, *values],
+            args,
         ).fetchall()
 
     by_year = [
@@ -452,7 +595,7 @@ def _facets(
         for kind, articles, count in conn.execute(
             f"SELECT a.kind, count(DISTINCT c.message_id), count(*){base}"
             " GROUP BY a.kind ORDER BY a.kind",
-            [match, *values],
+            args,
         ).fetchall()
     ]
     by_sender = [
@@ -460,14 +603,14 @@ def _facets(
         for sender, articles, count in conn.execute(
             f"SELECT a.sender, count(DISTINCT c.message_id), count(*){base}"
             " GROUP BY a.sender ORDER BY a.sender",
-            [match, *values],
+            args,
         ).fetchall()
     ]
     images = {"true": 0, "false": 0}
     for flag, articles in conn.execute(
         "SELECT CASE WHEN a.n_images > 0 THEN 'true' ELSE 'false' END AS bucket,"
         f" count(DISTINCT c.message_id){base} GROUP BY bucket",
-        [match, *values],
+        args,
     ).fetchall():
         images[flag] = articles
     return {
