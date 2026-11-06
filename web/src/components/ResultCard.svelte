@@ -33,8 +33,10 @@
     <a class="subject" href={result.article_href}>{result.subject}</a>
   </header>
   <p class="snippet">{@html safeSnippet(result.snippet)}</p>
+  <!-- No sender here: every article in the corpus comes from one of three
+       @stratechery.com addresses, so the line reads "email@stratechery.com" under
+       every result and tells the reader nothing about the passage. -->
   <footer>
-    <span>{result.sender}</span>
     <span class="num">chars {result.start_char}–{result.end_char}</span>
     <span class="num">score {result.score.toFixed(2)}</span>
     <a class="num" href={result.article_href}>#{result.chunk_id}</a>

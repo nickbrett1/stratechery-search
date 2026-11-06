@@ -82,27 +82,18 @@
     </div>
   </div>
 
-  <section class="columns">
-    <div class="card">
-      <h3>By kind</h3>
-      <ul>
-        {#each data.by_kind as bucket (bucket.kind)}
-          <li><span>{bucket.kind}</span><span class="count num">{bucket.articles}</span></li>
-        {/each}
-      </ul>
-    </div>
-    <div class="card">
-      <h3>By sender</h3>
-      <ul>
-        {#each data.by_sender as bucket (bucket.sender)}
-          <li>
-            <span>{bucket.sender || "(unknown)"}</span
-            ><span class="count num">{bucket.articles}</span>
-          </li>
-        {/each}
-      </ul>
-    </div>
-  </section>
+  <!-- One list, not the old two. The second was "By sender", which is three
+       @stratechery.com addresses over 1,691 articles: a breakdown of the
+       newsletter plumbing, not of the writing. By kind is the one a reader can
+       act on. -->
+  <div class="card kindex">
+    <h3>By kind</h3>
+    <ul>
+      {#each data.by_kind as bucket (bucket.kind)}
+        <li><span>{bucket.kind}</span><span class="count num">{bucket.articles}</span></li>
+      {/each}
+    </ul>
+  </div>
 
   <p class="hint footer">
     <a href="/">← search</a> · <a href="/healthz">/healthz</a> · <a href="/stats">/stats</a>
@@ -143,7 +134,7 @@
     margin: 12px 0;
   }
   .chart h3,
-  .columns h3 {
+  .kindex h3 {
     font-size: 12px;
     font-weight: 600;
     margin: 0 0 2px;
@@ -184,22 +175,17 @@
     text-align: right;
     color: var(--ink-dim);
   }
-  .columns {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 8px;
+  .kindex {
     margin-top: 12px;
-  }
-  .columns .card {
     padding: 10px 12px;
   }
-  .columns ul {
+  .kindex ul {
     list-style: none;
     padding: 0;
     margin: 6px 0 0;
     font-size: 12px;
   }
-  .columns li {
+  .kindex li {
     display: flex;
     justify-content: space-between;
     gap: 12px;
@@ -207,10 +193,10 @@
     border-bottom: 1px solid var(--line);
     color: var(--ink-dim);
   }
-  .columns li:last-child {
+  .kindex li:last-child {
     border-bottom: 0;
   }
-  .columns .count {
+  .kindex .count {
     color: var(--ink-muted);
   }
   .notice {

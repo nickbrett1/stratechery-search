@@ -15,10 +15,15 @@
   // A facet panel with nothing in it is four headings over four empty lists —
   // the same clutter as an instruction line. Draw it only when there is at least
   // one bucket to click, which also covers a search that matched nothing.
+  //
+  // There is no Sender facet: the corpus has three addresses, all @stratechery.com
+  // (blog@, email@, membership@), and the largest bucket is 13 of 1,691 articles.
+  // It cannot separate anything a reader wants separated, and it renders as an
+  // email address in a panel that is otherwise about the writing. The parameter
+  // still works if it is in a URL, and it still shows up as a removable chip —
+  // it just is not offered as a choice.
   const hasBuckets = $derived(
-    (facets?.by_year?.length ?? 0) > 0 ||
-      (facets?.by_kind?.length ?? 0) > 0 ||
-      (facets?.by_sender?.length ?? 0) > 0
+    (facets?.by_year?.length ?? 0) > 0 || (facets?.by_kind?.length ?? 0) > 0
   );
 
   function yearActive(year) {
@@ -73,24 +78,6 @@
       {/each}
     </ul>
     <p class="hint">{totalKind} passages across {facets?.by_kind?.length || 0} kinds</p>
-  </section>
-
-  <section>
-    <h2 class="section-title">Sender</h2>
-    <ul class="toggles">
-      {#each facets?.by_sender || [] as bucket (bucket.sender)}
-        <li>
-          <button
-            type="button"
-            class:active={query.sender.includes(bucket.sender)}
-            onclick={() => onchange({ ...query, offset: 0, sender: toggle(query.sender, bucket.sender) })}
-          >
-            <span>{bucket.sender || "(unknown)"}</span>
-            <span class="count num">{bucket.count}</span>
-          </button>
-        </li>
-      {/each}
-    </ul>
   </section>
 
   <section>
