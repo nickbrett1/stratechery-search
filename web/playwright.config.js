@@ -36,6 +36,9 @@ export default defineConfig({
       "python3 scripts/e2e-corpus.py .e2e && " +
       `PORT=${port} STATIC_DIR=web/dist INDEX_PATH=.e2e/index/search.sqlite ` +
       "ARCHIVE_ROOT=.e2e/archive PYTHONPATH=src python3 -m stratechery_search",
+    // PYTHONPATH on the second command only: the corpus script puts src/ on its
+    // own path, and the server has to be told where the package is when the
+    // image has not installed it (CI) — a checkout has src/, not site-packages.
     cwd: repoRoot,
     url: `${baseURL}/stats`,
     reuseExistingServer: !process.env.CI,

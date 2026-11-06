@@ -21,8 +21,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # `corpus` is a test module, not an installed one: the package ships the search,
-# not the fixture.
+# not the fixture. `src` is on the path for the same reason from the other side —
+# corpus.py imports `stratechery_search`, and requiring the caller to remember
+# PYTHONPATH=src is a trap: it worked in the devcontainer, where the package is
+# installed, and failed in CI with ModuleNotFoundError on the first run.
 sys.path.insert(0, str(ROOT / "tests"))
+sys.path.insert(0, str(ROOT / "src"))
 
 from corpus import build  # noqa: E402  (path had to be set up first)
 
