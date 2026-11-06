@@ -7,10 +7,10 @@
   let { facets = null, query, onchange } = $props();
 
   const maxYear = $derived(
-    Math.max(1, ...(facets?.by_year || []).map((bucket) => bucket.count))
+    Math.max(1, ...(facets?.by_year || []).map((bucket) => bucket.count)),
   );
   const totalKind = $derived(
-    (facets?.by_kind || []).reduce((sum, bucket) => sum + bucket.count, 0)
+    (facets?.by_kind || []).reduce((sum, bucket) => sum + bucket.count, 0),
   );
   // daily + update are one product under two names; the panel offers one row for
   // both and filters by both kinds at once (see lib/display.js).
@@ -26,7 +26,7 @@
   // still works if it is in a URL, and it still shows up as a removable chip —
   // it just is not offered as a choice.
   const hasBuckets = $derived(
-    (facets?.by_year?.length ?? 0) > 0 || (facets?.by_kind?.length ?? 0) > 0
+    (facets?.by_year?.length ?? 0) > 0 || (facets?.by_kind?.length ?? 0) > 0,
   );
 
   function yearActive(year) {
@@ -45,63 +45,75 @@
 </script>
 
 {#if hasBuckets}
-<aside class="facets">
-  <section>
-    <h2 class="section-title">Year</h2>
-    <div class="years">
-      {#each facets?.by_year || [] as bucket (bucket.year)}
-        <button
-          type="button"
-          class:active={yearActive(bucket.year)}
-          title="{bucket.articles} articles, {bucket.count} passages"
-          onclick={() => pickYear(bucket.year)}
-        >
-          <span class="bar" style="width: {Math.round((bucket.count / maxYear) * 100)}%"></span>
-          <span class="label num">{bucket.year}</span>
-          <span class="count num">{bucket.count}</span>
-        </button>
-      {/each}
-    </div>
-  </section>
-
-  <section>
-    <h2 class="section-title">Kind</h2>
-    <ul class="toggles">
-      {#each kinds as group (group.id)}
-        <li>
+  <aside class="facets">
+    <section>
+      <h2 class="section-title">Year</h2>
+      <div class="years">
+        {#each facets?.by_year || [] as bucket (bucket.year)}
           <button
             type="button"
-            class:active={kindActive(query.kind, group.kinds)}
-            onclick={() => onchange({ ...query, offset: 0, kind: toggleKindGroup(query.kind, group.kinds) })}
+            class:active={yearActive(bucket.year)}
+            title="{bucket.articles} articles, {bucket.count} passages"
+            onclick={() => pickYear(bucket.year)}
           >
-            <span>{group.label}</span>
-            <span class="count num">{group.count}</span>
+            <span
+              class="bar"
+              style="width: {Math.round((bucket.count / maxYear) * 100)}%"
+            ></span>
+            <span class="label num">{bucket.year}</span>
+            <span class="count num">{bucket.count}</span>
           </button>
-        </li>
-      {/each}
-    </ul>
-    <p class="hint">{totalKind} passages across {kinds.length} kinds</p>
-  </section>
+        {/each}
+      </div>
+    </section>
 
-  <section>
-    <h2 class="section-title">Images</h2>
-    <ul class="toggles">
-      {#each [["true", "with images"], ["false", "text only"]] as [value, label] (value)}
-        <li>
-          <button
-            type="button"
-            class:active={query.hasImages === value}
-            onclick={() =>
-              onchange({ ...query, offset: 0, hasImages: query.hasImages === value ? "" : value })}
-          >
-            <span>{label}</span>
-            <span class="count num">{facets?.has_images?.[value] ?? 0}</span>
-          </button>
-        </li>
-      {/each}
-    </ul>
-  </section>
-</aside>
+    <section>
+      <h2 class="section-title">Kind</h2>
+      <ul class="toggles">
+        {#each kinds as group (group.id)}
+          <li>
+            <button
+              type="button"
+              class:active={kindActive(query.kind, group.kinds)}
+              onclick={() =>
+                onchange({
+                  ...query,
+                  offset: 0,
+                  kind: toggleKindGroup(query.kind, group.kinds),
+                })}
+            >
+              <span>{group.label}</span>
+              <span class="count num">{group.count}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+      <p class="hint">{totalKind} passages across {kinds.length} kinds</p>
+    </section>
+
+    <section>
+      <h2 class="section-title">Images</h2>
+      <ul class="toggles">
+        {#each [["true", "with images"], ["false", "text only"]] as [value, label] (value)}
+          <li>
+            <button
+              type="button"
+              class:active={query.hasImages === value}
+              onclick={() =>
+                onchange({
+                  ...query,
+                  offset: 0,
+                  hasImages: query.hasImages === value ? "" : value,
+                })}
+            >
+              <span>{label}</span>
+              <span class="count num">{facets?.has_images?.[value] ?? 0}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  </aside>
 {/if}
 
 <style>

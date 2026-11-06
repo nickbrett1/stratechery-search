@@ -45,17 +45,32 @@
     <div class="crumbs">
       <span class="pill info kind">{kindLabel(data.kind)}</span>
       <span class="num date">{data.sent_at.slice(0, 10)}</span>
-      {#if data.is_transactional}<span class="pill warn">transactional</span>{/if}
+      {#if data.is_transactional}<span class="pill warn">transactional</span
+        >{/if}
     </div>
     <h1>{displaySubject(data.subject)}</h1>
     <dl class="facts">
-      <div><dt class="micro">from</dt><dd>{data.from_header}</dd></div>
-      <div><dt class="micro">words</dt><dd class="num">{data.words.toLocaleString()}</dd></div>
-      <div><dt class="micro">chars</dt><dd class="num">{data.chars.toLocaleString()}</dd></div>
-      <div><dt class="micro">passages</dt><dd class="num">{data.chunks.length}</dd></div>
+      <div>
+        <dt class="micro">from</dt>
+        <dd>{data.from_header}</dd>
+      </div>
+      <div>
+        <dt class="micro">words</dt>
+        <dd class="num">{data.words.toLocaleString()}</dd>
+      </div>
+      <div>
+        <dt class="micro">chars</dt>
+        <dd class="num">{data.chars.toLocaleString()}</dd>
+      </div>
+      <div>
+        <dt class="micro">passages</dt>
+        <dd class="num">{data.chunks.length}</dd>
+      </div>
       <div>
         <dt class="micro">est tokens</dt>
-        <dd class="num">{data.est_tokens.toLocaleString()} <span class="hint">chars/4</span></dd>
+        <dd class="num">
+          {data.est_tokens.toLocaleString()} <span class="hint">chars/4</span>
+        </dd>
       </div>
     </dl>
   </header>
@@ -64,10 +79,19 @@
     <section class="images">
       {#each data.images as image, index (image.url_path + index)}
         {#if image.href}
-          <img src={image.href} alt="article image {index + 1}" loading="lazy" />
+          <img
+            src={image.href}
+            alt="article image {index + 1}"
+            loading="lazy"
+          />
         {:else}
           <!-- The 2 url-only refs: never fabricate an asset path. -->
-          <a class="unmirrored num" href={image.url_path} rel="noopener noreferrer" target="_blank">
+          <a
+            class="unmirrored num"
+            href={image.url_path}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
             image {index + 1} — not mirrored, open at source
           </a>
         {/if}
@@ -79,7 +103,8 @@
     {#each data.text.split("\n\n") as paragraph, index (index)}
       {@const offset = data.text.indexOf(paragraph)}
       {@const chunk = chunkRanges.find(
-        (candidate) => offset >= candidate.start_char && offset < candidate.end_char
+        (candidate) =>
+          offset >= candidate.start_char && offset < candidate.end_char,
       )}
       <p id={chunk ? `c${chunk.chunk_id.replace(":", "-")}` : undefined}>
         {paragraph}
@@ -181,7 +206,9 @@
   .text p:target {
     background: var(--mark-bg);
     color: var(--ink);
-    box-shadow: -6px 0 0 var(--mark-bg), 6px 0 0 var(--mark-bg);
+    box-shadow:
+      -6px 0 0 var(--mark-bg),
+      6px 0 0 var(--mark-bg);
     border-radius: 2px;
   }
   @media (max-width: 600px) {

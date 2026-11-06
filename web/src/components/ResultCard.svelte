@@ -10,12 +10,25 @@
 
   let open = $state(false);
 
-  const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const ESCAPES = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
 
   function safeSnippet(snippet) {
-    const marked = snippet.replaceAll("<mark>", "\u0000").replaceAll("</mark>", "\u0001");
-    const escaped = marked.replace(/[&<>"']/g, (character) => ESCAPES[character]);
-    return escaped.replaceAll("\u0000", "<mark>").replaceAll("\u0001", "</mark>");
+    const marked = snippet
+      .replaceAll("<mark>", "\u0000")
+      .replaceAll("</mark>", "\u0001");
+    const escaped = marked.replace(
+      /[&<>"']/g,
+      (character) => ESCAPES[character],
+    );
+    return escaped
+      .replaceAll("\u0000", "<mark>")
+      .replaceAll("\u0001", "</mark>");
   }
 
   const date = $derived(result.sent_at.slice(0, 10));
@@ -37,9 +50,13 @@
 
 <article class="card result">
   <header>
-    <span class="pill kind {TONE[result.kind] ?? ''}">{kindLabel(result.kind)}</span>
+    <span class="pill kind {TONE[result.kind] ?? ''}"
+      >{kindLabel(result.kind)}</span
+    >
     <span class="date num">{date}</span>
-    <a class="subject" href={result.article_href}>{displaySubject(result.subject)}</a>
+    <a class="subject" href={result.article_href}
+      >{displaySubject(result.subject)}</a
+    >
   </header>
   <p class="snippet">{@html safeSnippet(result.snippet)}</p>
   <!-- One thing only: which passage of the article this is. The sender is the
@@ -47,12 +64,21 @@
        index internals — three lines of developer telemetry under every snippet
        in a product read on a phone. -->
   <footer>
-    <a class="num" href={result.article_href}>passage {ordinal(result.chunk_id)} →</a>
+    <a class="num" href={result.article_href}
+      >passage {ordinal(result.chunk_id)} →</a
+    >
   </footer>
 
   {#if passages.length}
-    <button class="more" type="button" aria-expanded={open} onclick={() => (open = !open)}>
-      {open ? "hide" : `${passages.length} more ${passages.length === 1 ? "passage" : "passages"}`}
+    <button
+      class="more"
+      type="button"
+      aria-expanded={open}
+      onclick={() => (open = !open)}
+    >
+      {open
+        ? "hide"
+        : `${passages.length} more ${passages.length === 1 ? "passage" : "passages"}`}
       <span class="chev" aria-hidden="true">{open ? "▴" : "▾"}</span>
     </button>
     {#if open}
@@ -60,7 +86,9 @@
         <div class="passage">
           <p class="snippet">{@html safeSnippet(passage.snippet)}</p>
           <footer>
-            <a class="num" href={passage.article_href}>passage {ordinal(passage.chunk_id)} →</a>
+            <a class="num" href={passage.article_href}
+              >passage {ordinal(passage.chunk_id)} →</a
+            >
           </footer>
         </div>
       {/each}

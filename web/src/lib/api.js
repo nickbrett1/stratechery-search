@@ -9,7 +9,9 @@ async function getJson(path, params) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = body.error || {};
-    const failure = new Error(error.message || `request failed (${response.status})`);
+    const failure = new Error(
+      error.message || `request failed (${response.status})`,
+    );
     failure.code = error.code || "request_failed";
     failure.detail = error.detail || {};
     failure.status = response.status;
@@ -38,6 +40,7 @@ export function searchQuery(state) {
 }
 
 export const search = (state) => getJson("/search", searchQuery(state));
-export const article = (messageId) => getJson(`/article/${encodeURIComponent(messageId)}`);
+export const article = (messageId) =>
+  getJson(`/article/${encodeURIComponent(messageId)}`);
 export const stats = () => getJson("/stats");
 export const health = () => getJson("/healthz");

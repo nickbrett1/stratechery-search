@@ -10,11 +10,33 @@
 // pill and the date line — 20 to 35 characters of it, on every result, in text
 // that has to fit a phone. "No Stratechery Daily Update" is how the archive marks
 // a skipped day, so it is stripped too.
-const SUBJECT_TAIL = /\s*\(\s*(?:No\s+|Free\s+)*Stratechery\b[^()]*\)\s*$/i;
+//
+// Deliberately not one regex: an end-anchored pattern with optional prefixes in
+// front of `[^()]*` backtracks super-linearly on a long title with a stray
+// bracket, which eslint flags and a phone would feel. Locating the final
+// parenthetical by index is linear and says what it means.
+function tailStart(subject) {
+  const end = subject.lastIndexOf(")");
+  if (end === -1 || subject.slice(end + 1).trim() !== "") return -1;
+  // Walk back through the opening brackets rather than taking the last one: two
+  // subjects in the archive are missing their closing bracket —
+  // "(Stratechery Daily Update (3-3-2020)" — so the outer "(" is the tail's.
+  for (let start = subject.lastIndexOf("(", end); start !== -1;) {
+    const inner = subject
+      .slice(start + 1, end)
+      .replace(/^(?:No|Free)\s+/i, "")
+      .trimStart();
+    if (/^Stratechery\b/i.test(inner)) return start;
+    start = start > 0 ? subject.lastIndexOf("(", start - 1) : -1;
+  }
+  return -1;
+}
 
 export function displaySubject(subject) {
   if (!subject) return subject;
-  const stripped = subject.replace(SUBJECT_TAIL, "").trim();
+  const at = tailStart(subject);
+  if (at === -1) return subject;
+  const stripped = subject.slice(0, at).trim();
   // A subject that was nothing but the tail keeps it rather than becoming blank.
   return stripped || subject;
 }
@@ -25,7 +47,9 @@ export function displaySubject(subject) {
 // half the archive, which is a trap nobody expects. The UI offers them as one
 // facet and filters by both kinds at once, while the URL keeps the raw kinds so
 // a shared link stays meaningful to the API.
-export const KIND_GROUPS = [{ id: "daily-update", label: "daily update", kinds: ["daily", "update"] }];
+export const KIND_GROUPS = [
+  { id: "daily-update", label: "daily update", kinds: ["daily", "update"] },
+];
 
 export function kindLabel(kind) {
   const group = KIND_GROUPS.find((candidate) => candidate.kinds.includes(kind));
@@ -36,14 +60,19 @@ export function groupKinds(byKind = []) {
   const seen = new Set();
   const groups = [];
   for (const group of KIND_GROUPS) {
-    const members = byKind.filter((bucket) => group.kinds.includes(bucket.kind));
+    const members = byKind.filter((bucket) =>
+      group.kinds.includes(bucket.kind),
+    );
     if (!members.length) continue;
     members.forEach((bucket) => seen.add(bucket.kind));
     groups.push({
       id: group.id,
       label: group.label,
       kinds: group.kinds,
-      articles: members.reduce((sum, bucket) => sum + (bucket.articles ?? 0), 0),
+      articles: members.reduce(
+        (sum, bucket) => sum + (bucket.articles ?? 0),
+        0,
+      ),
       count: members.reduce((sum, bucket) => sum + (bucket.count ?? 0), 0),
     });
   }
@@ -65,6 +94,7 @@ export function kindActive(selected = [], kinds = []) {
 }
 
 export function toggleKindGroup(selected = [], kinds = []) {
-  if (kindActive(selected, kinds)) return selected.filter((kind) => !kinds.includes(kind));
+  if (kindActive(selected, kinds))
+    return selected.filter((kind) => !kinds.includes(kind));
   return [...new Set([...selected, ...kinds])];
 }

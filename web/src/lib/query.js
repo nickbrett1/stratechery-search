@@ -2,7 +2,16 @@
 // here, so a result set is linkable, reloadable, and shareable to the phone.
 
 const KINDS = ["update", "daily", "weekly", "interview", "other"];
-const DEFAULTS = { q: "", from: "", to: "", kind: [], sender: [], hasImages: "", limit: 20, offset: 0 };
+const DEFAULTS = {
+  q: "",
+  from: "",
+  to: "",
+  kind: [],
+  sender: [],
+  hasImages: "",
+  limit: 20,
+  offset: 0,
+};
 
 function readSearchParams(search) {
   const params = new URLSearchParams(search);
@@ -12,7 +21,9 @@ function readSearchParams(search) {
     to: params.get("to") || "",
     kind: params.getAll("kind").filter((kind) => KINDS.includes(kind)),
     sender: params.getAll("sender").filter(Boolean),
-    hasImages: ["true", "false"].includes(params.get("has_images")) ? params.get("has_images") : "",
+    hasImages: ["true", "false"].includes(params.get("has_images"))
+      ? params.get("has_images")
+      : "",
     limit: Number(params.get("limit")) || DEFAULTS.limit,
     offset: Number(params.get("offset")) || 0,
   };
@@ -30,15 +41,19 @@ export function writeState(state, { replace = false, historyState = {} } = {}) {
   for (const kind of state.kind || []) params.append("kind", kind);
   for (const sender of state.sender || []) params.append("sender", sender);
   if (state.hasImages) params.set("has_images", state.hasImages);
-  if (state.limit && state.limit !== DEFAULTS.limit) params.set("limit", String(state.limit));
+  if (state.limit && state.limit !== DEFAULTS.limit)
+    params.set("limit", String(state.limit));
   if (state.offset) params.set("offset", String(state.offset));
-  const next = `/${params.toString() ? `?${params}` : ""}`;
+  const search = params.toString();
+  const next = search ? `/?${search}` : "/";
   if (replace) window.history.replaceState(historyState, "", next);
   else window.history.pushState(historyState, "", next);
 }
 
 export function toggle(list, value) {
-  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+  return list.includes(value)
+    ? list.filter((item) => item !== value)
+    : [...list, value];
 }
 
 export { KINDS };

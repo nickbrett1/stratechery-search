@@ -24,7 +24,7 @@
   const kinds = $derived(groupKinds(data?.by_kind ?? []));
 
   const maxYear = $derived(
-    Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles))
+    Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles)),
   );
 </script>
 
@@ -35,8 +35,9 @@
 {:else}
   <h1>The corpus</h1>
   <p class="hint sub">
-    {data.first.slice(0, 10)} → {data.last.slice(0, 10)} · flattener {data.index.flattener_version} ·
-    chunker {data.index.chunker_version} · built {data.index.built_at}
+    {data.first.slice(0, 10)} → {data.last.slice(0, 10)} · flattener {data.index
+      .flattener_version} · chunker {data.index.chunker_version} · built {data
+      .index.built_at}
   </p>
 
   <!-- The house stat card: micro-label, big tabular figure, footnote. Same shape
@@ -45,7 +46,9 @@
     <div class="card">
       <div class="t micro">articles</div>
       <div class="v num">{data.articles.toLocaleString()}</div>
-      <div class="s num">{data.searchable_articles.toLocaleString()} searchable</div>
+      <div class="s num">
+        {data.searchable_articles.toLocaleString()} searchable
+      </div>
     </div>
     <div class="card">
       <div class="t micro">passages</div>
@@ -55,7 +58,9 @@
     <div class="card">
       <div class="t micro">images</div>
       <div class="v num">{data.images.distinct_assets.toLocaleString()}</div>
-      <div class="s num">{data.images.articles_with_images.toLocaleString()} articles</div>
+      <div class="s num">
+        {data.images.articles_with_images.toLocaleString()} articles
+      </div>
     </div>
     <div class="card">
       <div class="t micro">transactional</div>
@@ -72,13 +77,17 @@
 
   <div class="card chart">
     <h3>Articles per year</h3>
-    <div class="note hint">One bar per published year; the gap in 2017 is a sampling artefact.</div>
+    <div class="note hint">
+      One bar per published year; the gap in 2017 is a sampling artefact.
+    </div>
     <div class="years">
       {#each data.by_year as bucket (bucket.year)}
         <div class="row">
           <span class="label num">{bucket.year}</span>
           <span class="track"
-            ><span class="bar" style="width: {Math.round((bucket.articles / maxYear) * 100)}%"
+            ><span
+              class="bar"
+              style="width: {Math.round((bucket.articles / maxYear) * 100)}%"
             ></span></span
           >
           <span class="count num">{bucket.articles}</span>
@@ -95,13 +104,18 @@
     <h3>By kind</h3>
     <ul>
       {#each kinds as bucket (bucket.id)}
-        <li><span>{bucket.label}</span><span class="count num">{bucket.articles}</span></li>
+        <li>
+          <span>{bucket.label}</span><span class="count num"
+            >{bucket.articles}</span
+          >
+        </li>
       {/each}
     </ul>
   </div>
 
   <p class="hint footer">
-    <a href="/">← search</a> · <a href="/healthz">/healthz</a> · <a href="/stats">/stats</a>
+    <a href="/">← search</a> · <a href="/healthz">/healthz</a> ·
+    <a href="/stats">/stats</a>
   </p>
 {/if}
 

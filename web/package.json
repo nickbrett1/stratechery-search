@@ -24,19 +24,20 @@
     "npm": ">=11 <12"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.3.0",
-    "svelte": "^5.53.8",
-    "vite": "^8.2.2",
-    "vitest": "^4.1.10",
-    "@vitest/coverage-v8": "^4.1.11",
     "@eslint/js": "^10.0.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-security": "^4.0.1",
+    "eslint-plugin-sonarjs": "^4.2.0",
     "globals": "^17.0.0",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.9.6",
-    "lint-staged": "^16.4.0"
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.53.8",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

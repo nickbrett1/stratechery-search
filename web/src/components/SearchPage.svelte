@@ -71,7 +71,11 @@
       chips.push({
         key: "kind-daily-update",
         label: "daily update",
-        patch: { kind: selectedKinds.filter((kind) => kind !== "daily" && kind !== "update") },
+        patch: {
+          kind: selectedKinds.filter(
+            (kind) => kind !== "daily" && kind !== "update",
+          ),
+        },
       });
     }
     for (const kind of selectedKinds) {
@@ -86,7 +90,9 @@
       chips.push({
         key: `sender-${sender}`,
         label: sender,
-        patch: { sender: (query.sender || []).filter((value) => value !== sender) },
+        patch: {
+          sender: (query.sender || []).filter((value) => value !== sender),
+        },
       });
     }
     if (query.hasImages) {
@@ -107,7 +113,15 @@
 
   function clearFilters() {
     sheetOpen = false;
-    onchange({ ...query, offset: 0, from: "", to: "", kind: [], sender: [], hasImages: "" });
+    onchange({
+      ...query,
+      offset: 0,
+      from: "",
+      to: "",
+      kind: [],
+      sender: [],
+      hasImages: "",
+    });
   }
 
   // Choosing a facet is the only reason the sheet exists, so it closes on the
@@ -133,12 +147,15 @@
   // "showing" range count articles, while the total stays a count of passages —
   // which is the number that tells the reader how much text matched.
   const pageStart = $derived((response?.offset ?? 0) + 1);
-  const pageEnd = $derived((response?.offset ?? 0) + (response?.results.length ?? 0));
+  const pageEnd = $derived(
+    (response?.offset ?? 0) + (response?.results.length ?? 0),
+  );
   const hasPrev = $derived((response?.offset ?? 0) > 0);
   const hasNext = $derived(
     response
-      ? response.offset + response.results.length < (response.article_total ?? 0)
-      : false
+      ? response.offset + response.results.length <
+          (response.article_total ?? 0)
+      : false,
   );
 </script>
 
@@ -187,19 +204,29 @@
        is. On a wide screen this row is hidden and the panel sits beside them. -->
   {#if response}
     <div class="chipsrow">
-      <button class="chip filters" type="button" onclick={() => (sheetOpen = true)}>
+      <button
+        class="chip filters"
+        type="button"
+        onclick={() => (sheetOpen = true)}
+      >
         filters{activeFilters.length ? ` (${activeFilters.length})` : ""}
         <span class="caret" aria-hidden="true">▾</span>
       </button>
       {#each activeFilters as chip (chip.key)}
-        <button class="chip on" type="button" onclick={() => removeFilter(chip.patch)}>
+        <button
+          class="chip on"
+          type="button"
+          onclick={() => removeFilter(chip.patch)}
+        >
           {chip.label}
           <span class="x" aria-hidden="true">×</span>
           <span class="sr">— remove filter</span>
         </button>
       {/each}
       {#if activeFilters.length}
-        <button class="chip clear" type="button" onclick={clearFilters}>clear all</button>
+        <button class="chip clear" type="button" onclick={clearFilters}
+          >clear all</button
+        >
       {/if}
     </div>
   {/if}
@@ -207,8 +234,12 @@
   <section class="results" class:loading>
     {#if response}
       <div class="tally">
-        <span><b class="num">{response.total.toLocaleString()}</b> passages</span>
-        <span class="hint num">in {response.article_total ?? response.results.length} articles</span>
+        <span
+          ><b class="num">{response.total.toLocaleString()}</b> passages</span
+        >
+        <span class="hint num"
+          >in {response.article_total ?? response.results.length} articles</span
+        >
         <span class="hint num">showing {pageStart}–{pageEnd}</span>
         <span class="pill info num">{response.took_ms} ms</span>
       </div>
@@ -223,7 +254,9 @@
         {#if activeFilters.length}
           <p class="notice">
             No passages match with these filters.
-            <button class="inline" type="button" onclick={clearFilters}>clear filters</button>
+            <button class="inline" type="button" onclick={clearFilters}
+              >clear filters</button
+            >
           </p>
         {:else}
           <p class="notice">No passages match. Try fewer words.</p>
@@ -233,14 +266,19 @@
         <button
           type="button"
           disabled={!hasPrev}
-          onclick={() => onchange({ ...query, offset: Math.max(0, response.offset - response.limit) })}
+          onclick={() =>
+            onchange({
+              ...query,
+              offset: Math.max(0, response.offset - response.limit),
+            })}
         >
           ← previous
         </button>
         <button
           type="button"
           disabled={!hasNext}
-          onclick={() => onchange({ ...query, offset: response.offset + response.limit })}
+          onclick={() =>
+            onchange({ ...query, offset: response.offset + response.limit })}
         >
           next →
         </button>
@@ -251,8 +289,14 @@
   <div class="facetwrap" class:open={sheetOpen}>
     <div class="sheethead">
       <span class="micro">filters</span>
-      <button class="chip clear" type="button" onclick={clearFilters}>clear all</button>
-      <button class="chip done" type="button" onclick={() => (sheetOpen = false)}>done</button>
+      <button class="chip clear" type="button" onclick={clearFilters}
+        >clear all</button
+      >
+      <button
+        class="chip done"
+        type="button"
+        onclick={() => (sheetOpen = false)}>done</button
+      >
     </div>
     <Facets facets={response?.facets ?? null} {query} onchange={facetChange} />
   </div>
@@ -260,7 +304,11 @@
 
 {#if sheetOpen}
   <!-- Tapping the dimmed results behind the sheet is the other way out. -->
-  <button class="scrim" type="button" aria-label="Close filters" onclick={() => (sheetOpen = false)}
+  <button
+    class="scrim"
+    type="button"
+    aria-label="Close filters"
+    onclick={() => (sheetOpen = false)}
   ></button>
 {/if}
 

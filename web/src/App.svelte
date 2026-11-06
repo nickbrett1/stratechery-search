@@ -23,7 +23,11 @@
 
   // Stamp the entry the app was opened on, so it is known and counted as zero.
   if (typeof window.history.state?.depth !== "number") {
-    window.history.replaceState({ ...(window.history.state || {}), depth: 0 }, "", window.location.href);
+    window.history.replaceState(
+      { ...(window.history.state || {}), depth: 0 },
+      "",
+      window.location.href,
+    );
   }
 
   function syncFromUrl() {
@@ -45,7 +49,12 @@
 
   function go(nextPath, { replace = false } = {}) {
     const nextDepth = replace ? depth : depth + 1;
-    if (replace) window.history.replaceState({ ...(window.history.state || {}), depth: nextDepth }, "", nextPath);
+    if (replace)
+      window.history.replaceState(
+        { ...(window.history.state || {}), depth: nextDepth },
+        "",
+        nextPath,
+      );
     else window.history.pushState({ depth: nextDepth }, "", nextPath);
     syncFromUrl();
   }
@@ -68,14 +77,25 @@
   // makes a web app feel like a web page.
   function onDocumentClick(event) {
     if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; // let the browser open a new tab
-    const anchor = event.target instanceof Element ? event.target.closest("a") : null;
-    if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return; // let the browser open a new tab
+    const anchor =
+      event.target instanceof Element ? event.target.closest("a") : null;
+    if (
+      !anchor ||
+      anchor.target === "_blank" ||
+      anchor.hasAttribute("download")
+    )
+      return;
     const href = anchor.getAttribute("href");
     if (!href) return;
     const url = new URL(href, window.location.href);
     if (url.origin !== window.location.origin) return;
-    if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+    if (
+      url.pathname === window.location.pathname &&
+      url.search === window.location.search
+    )
+      return;
     event.preventDefault();
     go(`${url.pathname}${url.search}${url.hash}`);
   }
@@ -87,8 +107,19 @@
 
 <header class="top" class:drill={isDrillIn}>
   {#if isDrillIn}
-    <button class="back" type="button" onclick={back} aria-label="Back to results">
-      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <button
+      class="back"
+      type="button"
+      onclick={back}
+      aria-label="Back to results"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        focusable="false"
+      >
         <path
           d="M10 3 5 8l5 5"
           fill="none"
@@ -101,11 +132,25 @@
       <span class="lbl">back</span>
     </button>
   {/if}
-  <a class="brand" href="/" onclick={(event) => { event.preventDefault(); go("/"); }}>
+  <a
+    class="brand"
+    href="/"
+    onclick={(event) => {
+      event.preventDefault();
+      go("/");
+    }}
+  >
     <!-- The same mark the tab and the home screen use, at 22px. It is the only
          colour in a header that is otherwise ink on the ground colour — the
          accent lens and the cream match lines are the whole point of it. -->
-    <img class="mark" src="/favicon.svg" alt="" width="22" height="22" aria-hidden="true" />
+    <img
+      class="mark"
+      src="/favicon.svg"
+      alt=""
+      width="22"
+      height="22"
+      aria-hidden="true"
+    />
     <span class="name">Stratechery <b>Search</b></span>
   </a>
   <nav class="seg">
@@ -125,9 +170,11 @@
 </header>
 
 <noscript>
-  <p class="notice">This UI needs JavaScript. The data is also plain JSON: <a href="/stats"
+  <p class="notice">
+    This UI needs JavaScript. The data is also plain JSON: <a href="/stats"
       >/stats</a
-    >, <a href="/healthz">/healthz</a>, and <code>/search?q=…</code>.</p>
+    >, <a href="/healthz">/healthz</a>, and <code>/search?q=…</code>.
+  </p>
 </noscript>
 
 <main>
