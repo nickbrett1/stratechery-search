@@ -56,11 +56,14 @@
   );
 </script>
 
+<!-- Placeholder copy is short on purpose: measured against the input on a 320px
+     phone, where the old text ("…articles — aggregation theory, smiling curve…")
+     was cut off mid-word. The count matches /stats. -->
 <form class="bar" onsubmit={submit}>
   <input
     type="search"
     bind:value={typed}
-    placeholder="Search 1,691 Stratechery articles — aggregation theory, smiling curve…"
+    placeholder="Search 1,691 articles"
     aria-label="Search the corpus"
     autocapitalize="none"
     autocomplete="off"
