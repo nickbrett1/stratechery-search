@@ -29,10 +29,16 @@
     };
   });
 
+  // The searchable slices, not the whole archive: a chip has to be a question
+  // the API can answer, and 44 of the 1,691 articles are transaction mail that
+  // search and browse cannot reach. `by_year` above them counts those too, so a
+  // chip built from it would promise a year that returns nothing.
+  const slices = $derived(data?.searchable ?? {});
+
   // Newest first: a reader browsing by year is far more often looking for
   // something recent than for 2016.
-  const years = $derived([...(data?.by_year ?? [])].reverse());
-  const kinds = $derived(groupKinds(data?.by_kind ?? []));
+  const years = $derived([...(slices.by_year ?? [])].reverse());
+  const kinds = $derived(groupKinds(slices.by_kind ?? []));
 
   function runTerm(term) {
     // Tapping a past search is a search: it moves back to the front of the list.

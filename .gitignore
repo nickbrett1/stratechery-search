@@ -38,3 +38,10 @@ venv/
 
 # Local sample bundle fetched from the archive host (never committed)
 .samples/
+
+# Playwright — fixture corpus, reports, and per-run output. The corpus is
+# rebuilt by scripts/e2e-corpus.py, so none of it is source.
+.e2e/
+web/test-results/
+web/playwright-report/
+web/blob-report/

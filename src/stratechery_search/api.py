@@ -771,6 +771,29 @@ def stats(conn: sqlite3.Connection) -> dict:
                 "SELECT sender, articles FROM stats_by_sender ORDER BY articles DESC"
             )
         ],
+        # The landing screen offers chips, and a chip is a question the API has
+        # to be able to answer. by_year/by_kind above describe the whole archive,
+        # transaction mail included, but search and browse only reach the
+        # searchable part — so a chip built from those would promise a year that
+        # returns nothing (the fixture corpus's only 2024 article is an access
+        # code). These slices are the same query restricted to what the reader
+        # can actually reach.
+        "searchable": {
+            "by_year": [
+                {"year": year, "articles": count}
+                for year, count in conn.execute(
+                    "SELECT substr(sent_at, 1, 4) AS year, count(*) FROM articles"
+                    " WHERE is_transactional = 0 GROUP BY year ORDER BY year"
+                )
+            ],
+            "by_kind": [
+                {"kind": kind, "articles": count}
+                for kind, count in conn.execute(
+                    "SELECT kind, count(*) FROM articles WHERE is_transactional = 0"
+                    " GROUP BY kind ORDER BY count(*) DESC, kind"
+                )
+            ],
+        },
         "transactional": transactional,
         "images": {
             "distinct_assets": images_distinct,

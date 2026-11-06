@@ -37,6 +37,41 @@ steps:
       - if [ -f package-lock.json ]; then npm ci --no-audit --no-fund --prefer-offline; else npm install --no-audit --no-fund; fi
       - npm run build
 
+  - label: ":playwright: Browser tests (does the app actually render?)"
+    key: e2e
+    depends_on:
+      - frontend_build
+    agents:
+      queue: mac-studio-linux
+    plugins:
+      - docker#v5.13.0:
+          image: "mcr.microsoft.com/playwright:v1.65.0-noble"
+          # The fleet is Apple silicon. Without this, docker resolves a
+          # multi-arch tag to linux/amd64 and runs the whole step emulated (with
+          # a warning, and native modules built for the wrong architecture).
+          platform: linux/arm64
+          workdir: /workdir
+    artifact_paths:
+      - "web/test-results/**/*"
+    commands:
+      # Nothing else in this pipeline renders a component. eslint checks syntax,
+      # vite build checks resolution, and the Python suite checks the JSON — a
+      # template referencing an undeclared variable passes all three and shows
+      # an empty results pane only in a browser. This step is the one that
+      # notices. The tag must match @playwright/test in web/package.json, or the
+      # image's browsers and the runner's expectations disagree.
+      - cd web
+      - |
+        PINNED="$$(node -p "require('./package.json').packageManager || ''" | sed -e 's/^npm@//')"
+        if [ -n "$$PINNED" ]; then npm install -g "npm@$$PINNED"; fi
+      - if [ -f package-lock.json ]; then npm ci --no-audit --no-fund --prefer-offline; else npm install --no-audit --no-fund; fi
+      - npm run build
+      # The fixture corpus is built by the suite's own script, which imports the
+      # same tests/corpus.py the contract tests use, so there is only one
+      # definition of "a corpus". It is pure stdlib, so no pip install.
+      - command -v python3 >/dev/null || (apt-get update && apt-get install -y --no-install-recommends python3)
+      - npx playwright test
+
   - label: ":hammer: Build and test (python)"
     key: build
     depends_on:

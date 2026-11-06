@@ -338,6 +338,20 @@ def test_stats_shape_is_the_contract(service):
     assert isinstance(body["notes"], list)
 
 
+def test_stats_offers_the_searchable_slices_the_landing_screen_builds_chips_from(
+    service,
+):
+    # by_year/by_kind describe the whole archive; the landing screen's chips
+    # must describe what a chip can actually reach, or 2024 (this corpus's only
+    # 2024 article is an access code) becomes a chip that returns nothing.
+    _status, body = get(f"{service}/stats")
+    searchable = body["searchable"]
+    assert [bucket["year"] for bucket in searchable["by_year"]] == ["2018", "2026"]
+    assert sum(bucket["articles"] for bucket in searchable["by_year"]) == 2
+    assert [bucket["kind"] for bucket in searchable["by_kind"]] == ["update"]
+    assert sum(bucket["articles"] for bucket in searchable["by_kind"]) == 2
+
+
 def test_asset_is_served_with_an_image_content_type(service):
     with urllib.request.urlopen(
         f"{service}/asset/aaaa0000.png", timeout=10
