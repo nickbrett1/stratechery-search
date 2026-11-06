@@ -30,6 +30,10 @@ export function searchQuery(state) {
   }
   if (state.limit) params.set("limit", String(state.limit));
   if (state.offset) params.set("offset", String(state.offset));
+  // One row per article, its other matching passages folded under the best one.
+  // The reader is looking for articles, not for the same 2018 update four times
+  // because it happens to be chunked; `limit` and `offset` then count articles.
+  params.set("group", "article");
   return params.toString();
 }
 

@@ -25,8 +25,26 @@ SNIPPET_TOKENS = 12
 MAX_QUERY_CHARS = 200
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
+# A grouped result carries the article's other matching chunks inline; a very
+# long interview can match twenty or more, and past a screenful the reader is
+# better served by the article page than by an ever-growing card.
+MAX_MORE_PASSAGES = 20
 
 KINDS = ("update", "daily", "weekly", "interview", "other")
+
+# The chunk projection and its joins live here rather than inline: the grouped
+# path runs them twice (once ranked per chunk, once for the page) and a copy that
+# drifted would make the two disagree about what "this article's passages" means.
+CHUNK_FIELDS = (
+    "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
+    " a.subject, a.kind, a.sender, bm25(chunks_fts, 10.0, 1.0) AS rank,"
+    " snippet(chunks_fts, 0, ?, ?, ?, ?) AS snip"
+)
+CHUNK_JOINS = (
+    " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
+    " JOIN articles a ON a.message_id = c.message_id"
+)
+SNIPPET_ARGS = [SNIPPET_OPEN, SNIPPET_CLOSE, SNIPPET_ELLIPSIS, SNIPPET_TOKENS]
 
 
 class ApiError(Exception):
@@ -59,6 +77,11 @@ class SearchParams:
     has_images: bool | None = None
     limit: int = DEFAULT_LIMIT
     offset: int = 0
+    # "passage" is the contract's original shape: one row per matching chunk,
+    # ranked by bm25. "article" folds an article's chunks under its best-ranked
+    # one and pages by article, which is what a reader wants — three passages of
+    # one 2018 update in the top four results reads as repetition, not relevance.
+    group: str = "passage"
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -116,6 +139,10 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
     if offset < 0:
         raise ApiError(400, "bad_request", "offset must be >= 0", {"offset": offset})
 
+    group = ((query.get("group") or [""])[0] or "passage").strip()
+    if group not in {"passage", "article"}:
+        raise ApiError(400, "bad_request", "group must be passage or article", {"group": group})
+
     return SearchParams(
         q=raw_q,
         start=_check_date((query.get("from") or [None])[0], "from"),
@@ -133,6 +160,7 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
         has_images=parse_bool((query.get("has_images") or [None])[0], name="has_images"),
         limit=limit,
         offset=offset,
+        group=group,
     )
 
 
@@ -253,53 +281,17 @@ def search(conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict
         [match, *values],
     ).fetchone()[0]
 
-    rows = conn.execute(
-        "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
-        " a.subject, a.kind, a.sender, bm25(chunks_fts, 10.0, 1.0) AS rank,"
-        " snippet(chunks_fts, 0, ?, ?, ?, ?) AS snip"
-        " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
-        " JOIN articles a ON a.message_id = c.message_id"
-        f" WHERE chunks_fts MATCH ?{where_sql}"
-        " ORDER BY rank, c.id LIMIT ? OFFSET ?",
-        [
-            SNIPPET_OPEN,
-            SNIPPET_CLOSE,
-            SNIPPET_ELLIPSIS,
-            SNIPPET_TOKENS,
-            match,
-            *values,
-            params.limit,
-            params.offset,
-        ],
-    ).fetchall()
-
-    results = [
-        {
-            "chunk_id": chunk_id,
-            "message_id": message_id,
-            "sent_at": sent_at,
-            "subject": subject,
-            "kind": kind,
-            "sender": sender,
-            "score": round(-float(rank), 6),
-            "snippet": snippet,
-            "start_char": start_char,
-            "end_char": end_char,
-            "article_href": f"/article/{message_id}#c{chunk_id.replace(':', '-')}",
-        }
-        for (
-            chunk_id,
-            message_id,
-            start_char,
-            end_char,
-            sent_at,
-            subject,
-            kind,
-            sender,
-            rank,
-            snippet,
-        ) in rows
-    ]
+    extra: dict[str, Any] = {}
+    if params.group == "article":
+        results, article_total = _grouped(conn, params, match, where_sql, values)
+        extra["article_total"] = article_total
+    else:
+        rows = conn.execute(
+            f"{CHUNK_FIELDS}{CHUNK_JOINS} WHERE chunks_fts MATCH ?{where_sql}"
+            " ORDER BY rank, c.id LIMIT ? OFFSET ?",
+            [*SNIPPET_ARGS, match, *values, params.limit, params.offset],
+        ).fetchall()
+        results = [_result(row) for row in rows]
 
     facets = _facets(conn, match, where, values)
     return {
@@ -314,7 +306,105 @@ def search(conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict
         "took_ms": int((time.perf_counter() - started) * 1000),
         "results": results,
         "facets": facets,
+        **extra,
     }
+
+
+def _result(row: tuple) -> dict:
+    (
+        chunk_id,
+        message_id,
+        start_char,
+        end_char,
+        sent_at,
+        subject,
+        kind,
+        sender,
+        rank,
+        snippet,
+    ) = row
+    return {
+        "chunk_id": chunk_id,
+        "message_id": message_id,
+        "sent_at": sent_at,
+        "subject": subject,
+        "kind": kind,
+        "sender": sender,
+        "score": round(-float(rank), 6),
+        "snippet": snippet,
+        "start_char": start_char,
+        "end_char": end_char,
+        "article_href": f"/article/{message_id}#c{chunk_id.replace(':', '-')}",
+    }
+
+
+def _grouped(
+    conn: sqlite3.Connection,
+    params: SearchParams,
+    match: str,
+    where_sql: str,
+    values: list[Any],
+) -> tuple[list[dict], int]:
+    """One row per article, its other matching chunks folded under the best one.
+
+    The ranking is a page of *articles*: an article takes the rank of its best
+    chunk, articles are ordered by that rank, and ``limit``/``offset`` count
+    articles. Paging on passages instead would show the same article again on the
+    next page — on "smiling curve" four of page two's fourteen articles were on
+    page one, and page three was almost entirely repeats.
+    """
+    where = f" WHERE chunks_fts MATCH ?{where_sql}"
+    # bm25() may be used only in a query that carries the MATCH — never inside an
+    # aggregate, and not in an ordinary subquery either ("unable to use function
+    # bm25 in the requested context", because it is evaluated in the outer
+    # context). MATERIALIZED is what makes the CTE a real boundary: SQLite then
+    # computes the rank per chunk inside the MATCH query, and the aggregate reads
+    # a plain column. It costs a full pass over the matching chunks — 40 ms on the
+    # 1,691-article index for the worst case, the word "the" — against 1 ms for
+    # the ungrouped query, which is the price of ordering articles by relevance.
+    page = conn.execute(
+        "WITH ranked AS MATERIALIZED ("
+        "SELECT c.message_id AS message_id, bm25(chunks_fts, 10.0, 1.0) AS rank"
+        f"{CHUNK_JOINS}{where}"
+        ") SELECT message_id, min(rank) AS rank, count(*) AS matched FROM ranked"
+        " GROUP BY message_id ORDER BY rank, message_id LIMIT ? OFFSET ?",
+        [match, *values, params.limit, params.offset],
+    ).fetchall()
+    article_total = conn.execute(
+        f"SELECT count(DISTINCT a.message_id){CHUNK_JOINS}{where}", [match, *values]
+    ).fetchone()[0]
+    if not page:
+        return [], article_total
+
+    ids = [message_id for message_id, _, _ in page]
+    rows = conn.execute(
+        f"{CHUNK_FIELDS}{CHUNK_JOINS}{where}"
+        f" AND a.message_id IN ({','.join('?' * len(ids))}) ORDER BY rank, c.id",
+        [*SNIPPET_ARGS, match, *values, *ids],
+    ).fetchall()
+
+    by_article: dict[int, list[dict]] = {}
+    for row in rows:
+        by_article.setdefault(row[1], []).append(_result(row))
+
+    results = []
+    for message_id, _, matched in page:
+        chunks = by_article.get(message_id, [])
+        if not chunks:
+            continue
+        lead, *rest = chunks
+        results.append(
+            {
+                **lead,
+                # How many passages of this article matched at all, and how many
+                # of them travelled with the row: the card says "3 more passages"
+                # without a second round trip.
+                "matched_passages": matched,
+                "more_total": len(rest),
+                "more_passages": rest[:MAX_MORE_PASSAGES],
+            }
+        )
+    return results, article_total
 
 
 def _facets(
@@ -406,14 +496,17 @@ def article(conn: sqlite3.Connection, message_id: int) -> dict:
     ).fetchall()
 
     # Reassemble the body by placing each slice at its recorded offset: the
-    # chunks overlap by design, so concatenating them would duplicate prose.
+    # chunks overlap by design (150 characters), so concatenating them duplicates
+    # prose at every seam. What has been placed so far ends at `covered`, so the
+    # part of this chunk that is new is everything past `covered - start_char` —
+    # which is a different question from how long the pieces are, and the two
+    # differ by exactly the overlap.
     pieces: list[str] = []
-    for _chunk_id, _ordinal, start_char, _end_char, text, _chunker, _hash in chunk_rows:
-        if not pieces:
-            pieces.append(text)
-            continue
-        offset = max(0, start_char - sum(len(piece) for piece in pieces))
-        pieces.append(text[offset:])
+    covered = 0
+    for _chunk_id, _ordinal, start_char, end_char, text, _chunker, _hash in chunk_rows:
+        skip = max(0, covered - start_char)
+        pieces.append(text[skip:])
+        covered = max(covered, end_char)
     body = "".join(pieces)
 
     images = [

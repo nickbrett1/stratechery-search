@@ -107,6 +107,44 @@ def test_filters_and_facets_narrow_together(service):
     assert empty["results"] == []
 
 
+def test_grouped_search_folds_an_articles_passages_under_one_row(service):
+    # The fixture's first article repeats one paragraph, so it matches in several
+    # chunks: ungrouped, "aggregation" returns those chunks as separate results.
+    _, passages = get(f"{service}/search?q=aggregation")
+    assert len(passages["results"]) > 1
+    assert len({result["message_id"] for result in passages["results"]}) == 1
+
+    _, body = get(f"{service}/search?q=aggregation&group=article")
+    assert body["total"] == passages["total"]
+    assert body["article_total"] == 1
+    assert len(body["results"]) == 1
+
+    lead = body["results"][0]
+    assert lead["message_id"] == 152
+    assert lead["matched_passages"] == len(passages["results"])
+    assert lead["more_total"] == len(lead["more_passages"]) == len(passages["results"]) - 1
+    assert all(chunk["message_id"] == 152 for chunk in lead["more_passages"])
+    assert lead["chunk_id"] not in {chunk["chunk_id"] for chunk in lead["more_passages"]}
+    # The lead is the best-ranked chunk of the article, not merely the first one.
+    assert lead["score"] >= max(chunk["score"] for chunk in lead["more_passages"])
+
+
+def test_grouped_paging_counts_articles_not_passages(service):
+    # Passage paging would hand back another chunk of the same article at offset
+    # 1, which is how page two came to repeat page one in the SPA.
+    _, first = get(f"{service}/search?q=aggregation&group=article&limit=1&offset=0")
+    _, second = get(f"{service}/search?q=aggregation&group=article&limit=1&offset=1")
+    assert len(first["results"]) == 1
+    assert first["article_total"] == 1
+    assert second["results"] == []
+
+
+def test_group_must_be_a_known_mode(service):
+    status, body = get(f"{service}/search?q=the&group=author")
+    assert status == 400
+    assert body["error"]["code"] == "bad_request"
+
+
 def test_pagination_is_reported(service):
     _, body = get(f"{service}/search?q=the&limit=1&offset=1")
     assert body["limit"] == 1

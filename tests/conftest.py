@@ -20,10 +20,13 @@ from stratechery_search.chunk import chunk_text
 from stratechery_search.flatten import main as flatten_main
 from stratechery_search.server import Config, Handler, Server
 
+# Long enough to be chunked into three (TARGET_CHARS is 1,500), which is what
+# makes the grouped-search tests meaningful: the same article matches in more
+# than one passage.
 ARTICLE_BODY = (
     "The aggregation theory says integration is a choice about where the "
     "bottleneck sits in a value chain.\n\n"
-) * 14
+) * 30
 SECOND_BODY = (
     "Apple's services revenue is a function of the installed base, and the "
     "installed base is a function of the iPhone.\n\n"

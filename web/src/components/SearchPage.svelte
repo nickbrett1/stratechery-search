@@ -128,11 +128,17 @@
     };
   });
 
+  // The API pages by article (`group=article`): one row per article, its other
+  // matching passages folded under the best-ranked one. So the pager and the
+  // "showing" range count articles, while the total stays a count of passages —
+  // which is the number that tells the reader how much text matched.
   const pageStart = $derived((response?.offset ?? 0) + 1);
   const pageEnd = $derived((response?.offset ?? 0) + (response?.results.length ?? 0));
   const hasPrev = $derived((response?.offset ?? 0) > 0);
   const hasNext = $derived(
-    response ? response.offset + response.results.length < response.total : false
+    response
+      ? response.offset + response.results.length < (response.article_total ?? 0)
+      : false
   );
 </script>
 
@@ -202,12 +208,13 @@
     {#if response}
       <div class="tally">
         <span><b class="num">{response.total.toLocaleString()}</b> passages</span>
+        <span class="hint num">in {response.article_total ?? response.results.length} articles</span>
         <span class="hint num">showing {pageStart}–{pageEnd}</span>
         <span class="pill info num">{response.took_ms} ms</span>
       </div>
       <div class="cards">
         {#each response.results as result (result.chunk_id)}
-          <ResultCard {result} />
+          <ResultCard {result} passages={result.more_passages ?? []} />
         {/each}
       </div>
       {#if response.results.length === 0}

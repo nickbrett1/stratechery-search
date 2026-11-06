@@ -4,7 +4,11 @@
   // The snippet arrives with <mark>…</mark> from SQLite's snippet(). It is article
   // text, so everything else is escaped before the marks go back in: the index
   // is trusted, the prose inside it is not markup.
-  let { result } = $props();
+  // `passages` are the other chunks of the same article that matched: folded
+  // under the best-ranked one so a page reads as articles, not as repetitions.
+  let { result, passages = [] } = $props();
+
+  let open = $state(false);
 
   const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
@@ -15,6 +19,7 @@
   }
 
   const date = $derived(result.sent_at.slice(0, 10));
+  const ordinal = (chunkId) => Number(chunkId.split(":")[1]) + 1;
 
   // Kind tints come from the house palette only: sky for the long-form
   // interviews, green for the weekly, orange for the short updates. Nothing here
@@ -42,8 +47,25 @@
        index internals — three lines of developer telemetry under every snippet
        in a product read on a phone. -->
   <footer>
-    <a class="num" href={result.article_href}>passage {Number(result.chunk_id.split(":")[1]) + 1} →</a>
+    <a class="num" href={result.article_href}>passage {ordinal(result.chunk_id)} →</a>
   </footer>
+
+  {#if passages.length}
+    <button class="more" type="button" aria-expanded={open} onclick={() => (open = !open)}>
+      {open ? "hide" : `${passages.length} more ${passages.length === 1 ? "passage" : "passages"}`}
+      <span class="chev" aria-hidden="true">{open ? "▴" : "▾"}</span>
+    </button>
+    {#if open}
+      {#each passages as passage (passage.chunk_id)}
+        <div class="passage">
+          <p class="snippet">{@html safeSnippet(passage.snippet)}</p>
+          <footer>
+            <a class="num" href={passage.article_href}>passage {ordinal(passage.chunk_id)} →</a>
+          </footer>
+        </div>
+      {/each}
+    {/if}
+  {/if}
 </article>
 
 <style>
@@ -102,5 +124,41 @@
   }
   footer a:hover {
     color: var(--accent);
+  }
+  .more {
+    /* A full-width tap target at the card's own inset, not an 11px link: this is
+       the control that reveals the rest of an article on a phone. */
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    margin: 2px 0 0;
+    padding: 6px 0 2px;
+    font: inherit;
+    font-size: 11px;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--line);
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .more:hover {
+    color: #fff;
+  }
+  .chev {
+    font-size: 9px;
+    color: var(--ink-faint);
+  }
+  /* A folded passage keeps the card's left edge so the fold reads as depth
+     rather than as another result. */
+  .passage {
+    margin-top: 8px;
+    padding-left: 9px;
+    border-left: 2px solid var(--line);
+  }
+  .passage .snippet {
+    margin-top: 0;
   }
 </style>
