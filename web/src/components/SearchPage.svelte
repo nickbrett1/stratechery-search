@@ -48,6 +48,74 @@
     onchange({ ...query, q: typed.trim(), offset: 0 });
   }
 
+  // Active filters, as removable chips. The facet panel is a mile down a phone
+  // screen (it sat 4,016px below the top of the results — 4.8 screens), so on
+  // mobile the filters come to the reader as a chip row instead, and the full
+  // panel opens as a sheet.
+  const activeFilters = $derived.by(() => {
+    const chips = [];
+    if (query.from || query.to) {
+      const from = query.from ? query.from.slice(0, 4) : "…";
+      const to = query.to ? query.to.slice(0, 4) : "…";
+      chips.push({
+        key: "date",
+        label: from === to ? from : `${from}–${to}`,
+        patch: { from: "", to: "" },
+      });
+    }
+    for (const kind of query.kind || []) {
+      chips.push({
+        key: `kind-${kind}`,
+        label: kind,
+        patch: { kind: (query.kind || []).filter((value) => value !== kind) },
+      });
+    }
+    for (const sender of query.sender || []) {
+      chips.push({
+        key: `sender-${sender}`,
+        label: sender,
+        patch: { sender: (query.sender || []).filter((value) => value !== sender) },
+      });
+    }
+    if (query.hasImages) {
+      chips.push({
+        key: "images",
+        label: query.hasImages === "true" ? "with images" : "no images",
+        patch: { hasImages: "" },
+      });
+    }
+    return chips;
+  });
+
+  let sheetOpen = $state(false);
+
+  function removeFilter(patch) {
+    onchange({ ...query, offset: 0, ...patch });
+  }
+
+  function clearFilters() {
+    sheetOpen = false;
+    onchange({ ...query, offset: 0, from: "", to: "", kind: [], sender: [], hasImages: "" });
+  }
+
+  // Choosing a facet is the only reason the sheet exists, so it closes on the
+  // choice: the point is to see the results change.
+  function facetChange(next) {
+    sheetOpen = false;
+    onchange(next);
+  }
+
+  // The sheet owns the screen while it is open; letting the page scroll behind it
+  // makes a phone feel broken rather than busy.
+  $effect(() => {
+    if (!sheetOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  });
+
   const pageStart = $derived((response?.offset ?? 0) + 1);
   const pageEnd = $derived((response?.offset ?? 0) + (response?.results.length ?? 0));
   const hasPrev = $derived((response?.offset ?? 0) > 0);
@@ -96,7 +164,28 @@
   </p>
 {/if}
 
-<div class="layout">
+<div class="layout" class:sheet-open={sheetOpen}>
+  <!-- Phone only: filters as chips, directly above the results, where the reader
+       is. On a wide screen this row is hidden and the panel sits beside them. -->
+  {#if response}
+    <div class="chipsrow">
+      <button class="chip filters" type="button" onclick={() => (sheetOpen = true)}>
+        filters{activeFilters.length ? ` (${activeFilters.length})` : ""}
+        <span class="caret" aria-hidden="true">▾</span>
+      </button>
+      {#each activeFilters as chip (chip.key)}
+        <button class="chip on" type="button" onclick={() => removeFilter(chip.patch)}>
+          {chip.label}
+          <span class="x" aria-hidden="true">×</span>
+          <span class="sr">— remove filter</span>
+        </button>
+      {/each}
+      {#if activeFilters.length}
+        <button class="chip clear" type="button" onclick={clearFilters}>clear all</button>
+      {/if}
+    </div>
+  {/if}
+
   <section class="results" class:loading>
     {#if response}
       <div class="tally">
@@ -110,7 +199,16 @@
         {/each}
       </div>
       {#if response.results.length === 0}
-        <p class="notice">No passages match. Try fewer words.</p>
+        <!-- Advice has to match the cause: a filter that excludes everything is
+             not fixed by typing fewer words. -->
+        {#if activeFilters.length}
+          <p class="notice">
+            No passages match with these filters.
+            <button class="inline" type="button" onclick={clearFilters}>clear filters</button>
+          </p>
+        {:else}
+          <p class="notice">No passages match. Try fewer words.</p>
+        {/if}
       {/if}
       <nav class="seg pager">
         <button
@@ -131,8 +229,21 @@
     {/if}
   </section>
 
-  <Facets facets={response?.facets ?? null} {query} {onchange} />
+  <div class="facetwrap" class:open={sheetOpen}>
+    <div class="sheethead">
+      <span class="micro">filters</span>
+      <button class="chip clear" type="button" onclick={clearFilters}>clear all</button>
+      <button class="chip done" type="button" onclick={() => (sheetOpen = false)}>done</button>
+    </div>
+    <Facets facets={response?.facets ?? null} {query} onchange={facetChange} />
+  </div>
 </div>
+
+{#if sheetOpen}
+  <!-- Tapping the dimmed results behind the sheet is the other way out. -->
+  <button class="scrim" type="button" aria-label="Close filters" onclick={() => (sheetOpen = false)}
+  ></button>
+{/if}
 
 <style>
   .bar {
@@ -160,6 +271,80 @@
     grid-template-columns: minmax(0, 1fr) 224px;
     gap: 22px;
     align-items: start;
+  }
+  /* Filter chips: the phone's substitute for the sideways panel. Hidden on a wide
+     screen, where the panel itself is visible beside the results. */
+  .chipsrow {
+    display: none;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chip.on {
+    color: var(--accent);
+    border-color: rgba(125, 211, 252, 0.45);
+    background: rgba(125, 211, 252, 0.1);
+  }
+  .chip .x {
+    color: var(--ink-faint);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .chip.clear {
+    border-style: dashed;
+    color: var(--ink-muted);
+  }
+  .chip.done {
+    margin-left: auto;
+    color: #fff;
+    border-color: var(--line-strong);
+  }
+  .chip .caret {
+    font-size: 9px;
+    color: var(--ink-faint);
+  }
+  /* A button that reads as a link, for advice inside a notice. */
+  .inline {
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .facetwrap {
+    display: block;
+    min-width: 0;
+  }
+  .sheethead {
+    display: none;
+  }
+  .scrim {
+    display: none;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .results.loading {
     opacity: 0.55;
@@ -215,6 +400,86 @@
     .bar .btn {
       padding: 0 14px;
       font-size: 13px;
+    }
+  }
+  /* ---- phone layout -------------------------------------------------------
+     Below 600px the facet panel leaves the flow entirely: it becomes a sheet
+     raised from the bottom, and a sticky chip row above the results carries the
+     filters the reader has actually applied. This is the difference between
+     "filters exist" and "filters are reachable" — as a stacked column it began
+     4,016px down the page, which is 4.8 phone screens past the first result. */
+  @media (max-width: 600px) {
+    .chipsrow {
+      position: sticky;
+      top: 50px; /* height of the sticky header above it */
+      z-index: 5;
+      display: flex;
+      gap: 6px;
+      margin: 0 -12px;
+      padding: 7px 12px;
+      overflow-x: auto;
+      background: rgba(15, 23, 42, 0.93);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+      scrollbar-width: none;
+    }
+    .chipsrow::-webkit-scrollbar {
+      display: none;
+    }
+    .facetwrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      max-height: 72vh;
+      padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+      overflow-y: auto;
+      background: var(--bg);
+      border-top: 1px solid var(--line-strong);
+      border-radius: 12px 12px 0 0;
+      transform: translateY(101%);
+      transition: transform 180ms ease;
+    }
+    .facetwrap.open {
+      transform: none;
+    }
+    .facetwrap .facets {
+      position: static;
+      top: auto;
+    }
+    .sheethead {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    /* The sheet's own escape hatches get a 44px thumb target. The painted pill
+       stays 34px so the sheet head does not grow; the row below it scrolls, so
+       this is the one place where the target can grow without being clipped. */
+    .sheethead .chip {
+      position: relative;
+      height: 34px;
+    }
+    .sheethead .chip::after {
+      content: "";
+      position: absolute;
+      inset: -5px -4px;
+      border-radius: inherit;
+    }
+    .scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 19;
+      padding: 0;
+      background: rgba(15, 23, 42, 0.6);
+      border: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .facetwrap {
+      transition: none;
     }
   }
 </style>
