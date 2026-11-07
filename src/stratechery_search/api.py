@@ -785,7 +785,7 @@ def _hybrid_search(
     ]
 
     vector = embed_module.embed([params.q], input_type="search_query")[0]
-    hits = backend.search(vector, filters=filters, limit=span)
+    hits = backend.search(vector, conn=conn, filters=filters, limit=span)
     vector_ids = [hit.chunk_id for hit in hits]
     distances = {hit.chunk_id: hit.distance for hit in hits}
 

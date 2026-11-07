@@ -253,15 +253,46 @@ class Backend:
         self._table = None
         self._parity: dict | None = None
         self._conn = conn
+        self._stamp: int | None = None
+
+    def _store_mtime(self) -> int:
+        """A cheap "has the store moved on disk" probe.
+
+        LanceDB writes each version as new files inside ``passages.lance``, so
+        that directory's mtime changes exactly when a rebuild lands. Without
+        this, a process that served one hybrid request before a corpus pass
+        keeps the *old* snapshot for its whole life and answers confidently
+        from 96 rows — which is what happened between stage A and stage B.
+        """
+        target = self.path / f"{TABLE}.lance"
+        try:
+            return (target if target.exists() else self.path).stat().st_mtime_ns
+        except OSError:
+            return 0
 
     def table(self, conn: sqlite3.Connection | None = None):
-        if self._table is None:
-            self._table = open_store(self.path)
-            self._parity = assert_parity(self._table, conn or self._conn)
+        stamp = self._store_mtime()
+        if self._table is None or stamp != self._stamp:
+            table = open_store(self.path)
+            # Validate *before* caching. Cached first, a mismatch would 500 once
+            # and then serve 200s for the life of the process — the exact
+            # silence this check exists to prevent.
+            parity = assert_parity(table, conn or self._conn)
+            self._table, self._parity, self._stamp = table, parity, stamp
         return self._table
 
-    def search(self, vector: list[float], *, filters: FilterSet, limit: int):
-        return search(self.table(), vector, filters=filters, limit=limit)
+    def search(
+        self,
+        vector: list[float],
+        *,
+        conn: sqlite3.Connection | None = None,
+        filters: FilterSet,
+        limit: int,
+    ):
+        # The connection is what makes parity possible: without it
+        # `assert_parity` has no index to compare against and the first hybrid
+        # request after every process start raised AttributeError -> 500.
+        return search(self.table(conn), vector, filters=filters, limit=limit)
 
     def describe(self, conn: sqlite3.Connection | None = None) -> dict:
         table = self.table(conn)

@@ -110,8 +110,8 @@ class FakeBackend:
         self.distances = distances or {}
         self.calls = []
 
-    def search(self, vector, *, filters, limit):
-        self.calls.append({"limit": limit, "vector": vector, "filters": filters})
+    def search(self, vector, *, conn=None, filters, limit):
+        self.calls.append({"limit": limit, "vector": vector, "filters": filters, "conn": conn})
         return [
             StoredVector(chunk_id=cid, distance=self.distances.get(cid, 0.1))
             for cid in self.chunk_ids[:limit]
@@ -178,6 +178,21 @@ def test_both_arms_agreeing_is_labelled_and_keeps_the_real_snippet(conn, embedde
     assert both[0]["score"] is not None
 
 
+def test_the_query_connection_reaches_the_vector_arm(conn, embedded):
+    """The first hybrid request after a process start used to 500 here.
+
+    ``assert_parity`` compares the store against ``search.sqlite``, so it needs
+    the connection; ``Backend`` was built with ``conn=None`` and nothing passed
+    one through, so a cold process raised AttributeError on the very first
+    hybrid request. Warm processes hid it.
+    """
+    backend = FakeBackend(["152:0"])
+    params = api.parse_search_params({"q": ["aggregation"], "hybrid": ["1"]})
+    api.search(conn, params, {}, hybrid=backend)
+    assert backend.calls, "the arm should have been asked"
+    assert all(call["conn"] is conn for call in backend.calls)
+
+
 def test_the_embed_uses_search_query_never_search_document(conn, embedded):
     backend = FakeBackend([])
     params = api.parse_search_params({"q": ["aggregation"], "hybrid": ["1"]})
@@ -214,7 +229,7 @@ def test_a_gateway_failure_degrades_to_bm25_and_says_so(conn, monkeypatch):
 
 def test_a_store_that_disagrees_with_the_index_is_a_500_not_a_degradation(conn, embedded):
     class Mismatched(FakeBackend):
-        def search(self, vector, *, filters, limit):
+        def search(self, vector, *, conn=None, filters, limit):
             raise StoreError("store_mismatch", "store has 4 passages, search.sqlite has 5")
 
     params = api.parse_search_params({"q": ["aggregation"], "hybrid": ["1"]})

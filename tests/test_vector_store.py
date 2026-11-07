@@ -77,6 +77,23 @@ def test_the_corpus_pass_budgets_its_own_timeout(store, fake_vectors, tmp_path, 
     assert summary["embedded"] == 2
 
 
+def test_a_parity_failure_is_not_cached(store, fake_vectors, tmp_path):
+    """A store that disagrees with the index must fail *every* request.
+
+    The handle used to be cached before parity was checked, so a mismatch was
+    one 500 followed by silent 200s for the life of the process.
+    """
+    store_path, conn, index_path = store
+    build(tmp_path, index_path, limit=2)  # partial on purpose: 2 rows, 5 chunks
+    backend = vector_store.Backend(store_path, conn)
+
+    with pytest.raises(vector_store.StoreError):
+        backend.table(conn)
+    with pytest.raises(vector_store.StoreError):
+        backend.table(conn)
+    assert backend._table is None, "a store that failed parity must not be kept"
+
+
 def test_the_full_fixture_corpus_round_trips(store, fake_vectors, tmp_path):
     store_path, conn, index_path = store
     summary = build(tmp_path, index_path)
