@@ -338,7 +338,7 @@ def load_vocab(path: Path | None) -> dict[str, dict]:
     except VocabError as exc:
         raise ApiError(
             503,
-            "vocabulary_invalid",
+            "vocab_invalid",
             "vocab.yaml is not in the accepted shape",
             {"path": str(path), "detail": str(exc)},
         ) from exc

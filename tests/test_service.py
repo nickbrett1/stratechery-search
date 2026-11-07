@@ -375,15 +375,59 @@ def test_a_real_vocabulary_file_drives_the_rewrite(tmp_path):
     assert expansions[0]["source"] == "vocab.yaml"
 
 
-def test_a_malformed_vocabulary_file_is_an_api_error(tmp_path):
-    # Now that the file is committed, a typo is a reviewable mistake: it must
-    # surface as an answered 503, not an uncaught VocabError per search.
-    path = tmp_path / "vocab.yaml"
-    path.write_text("bogus line\n", encoding="utf-8")
-    with pytest.raises(api.ApiError) as raised:
-        api.load_vocab(path)
-    assert raised.value.status == 503
-    assert raised.value.code == "vocabulary_invalid"
+def test_a_malformed_vocabulary_file_is_an_answered_503(corpus, tmp_path):
+    """A typo in vocab.yaml must not drop the connection.
+
+    ``load_vocab()`` runs inside the /search handler, and ``VocabError`` is a
+    ``ValueError`` rather than an ``ApiError``: before the guard in
+    ``api.load_vocab``, one stray line propagated out of ``do_GET`` and
+    ``BaseHTTPRequestHandler`` closed the socket — on every search, until the file
+    was fixed or deleted. The reader got a dead connection instead of the
+    contract's ``{"error": {...}}``. This asserts the answered 503, which is also
+    the assertion that the socket was not dropped: a dropped connection raises
+    ``URLError``/``RemoteDisconnected`` out of ``get()`` rather than returning.
+    """
+    import threading
+
+    from stratechery_search.server import Config, Handler, Server
+
+    archive, _derived, index_path = corpus
+    bad_vocab = tmp_path / "vocab.yaml"
+    bad_vocab.write_text(
+        "terms:\n"
+        "  - canonical: Digital Markets Act\n"
+        "    aliases: [DMA]\n"
+        "  - canonical: Broken\n"
+        "    this line is not part of the accepted shape\n",
+        encoding="utf-8",
+    )
+    config = Config(
+        port=0,
+        index_path=index_path,
+        archive_root=archive,
+        static_dir=tmp_path / "dist",
+        vocab_path=bad_vocab,
+    )
+    server = Server(("127.0.0.1", 0), Handler)
+    server.config = config
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    try:
+        status, body = get(f"http://{host}:{port}/search?q=DMA")
+        assert status == 503
+        assert body["error"]["code"] == "vocab_invalid"
+        # The file's own line number, so the typo can be found without guessing.
+        assert ":5:" in body["error"]["detail"]["detail"]
+        # And the next request is answered the same way, not refused at the
+        # socket: the handler recovered rather than leaving the service dead.
+        status, body = get(f"http://{host}:{port}/search?q=aggregation")
+        assert status == 503
+        assert body["error"]["code"] == "vocab_invalid"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_a_missing_resolver_degrades_instead_of_failing(corpus):
