@@ -11,6 +11,7 @@ so changing them is a breaking change rather than an implementation detail.
 
 from __future__ import annotations
 
+import html
 import re
 import sqlite3
 import time
@@ -18,7 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import embed as embed_module
+from . import fusion
+from .filters import FilterSet
 from .notes import daily_from_month, stats_notes
+from .vector_store import StoreError
 
 SNIPPET_OPEN = "<mark>"
 SNIPPET_CLOSE = "</mark>"
@@ -91,6 +96,12 @@ class SearchParams:
     # matched by prefix. Off by default, so the MCP adapter, a bookmarked URL and
     # `curl` keep meaning exactly what they meant — a complete question.
     partial: bool = False
+    # Phase 2: fuse the BM25 arm with a vector arm over LanceDB. Off by default,
+    # and additive: a rewrite the reader cannot see is one they cannot trust, so
+    # the default response must stay byte-identical. Hybrid is also forced off
+    # under `partial=1` — type-ahead fires a request per keystroke, and a live
+    # embed call on each is a latency question, not a money one (§4.2).
+    hybrid: bool = False
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -193,6 +204,7 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
         offset=offset,
         group=group,
         partial=bool(parse_bool((query.get("partial") or [None])[0], name="partial")),
+        hybrid=bool(parse_bool((query.get("hybrid") or [None])[0], name="hybrid")),
     )
     if not params.q and not _has_filter(params):
         # An empty q is 400 unless a filter narrows the corpus. "Everything" is
@@ -411,28 +423,14 @@ def expand_query(raw: str, vocab: dict[str, dict]) -> tuple[str, list[dict]]:
 
 
 def _filters(params: SearchParams) -> tuple[str, list[Any]]:
-    clauses: list[str] = []
-    values: list[Any] = []
-    if params.start:
-        clauses.append("a.sent_at >= ?")
-        values.append(f"{params.start}T00:00:00Z")
-    if params.end:
-        clauses.append("a.sent_at <= ?")
-        values.append(f"{params.end}T23:59:59Z")
-    if params.kinds:
-        clauses.append("a.kind IN (" + ",".join("?" * len(params.kinds)) + ")")
-        values.extend(params.kinds)
-    if params.senders:
-        clauses.append("a.sender IN (" + ",".join("?" * len(params.senders)) + ")")
-        values.extend(params.senders)
-    if params.has_images is not None:
-        clauses.append("a.n_images > 0" if params.has_images else "a.n_images = 0")
-    # Transaction mail (access codes, receipts, renewals) is in the corpus but is
-    # never searchable: there is no query for which it is the right answer, so
-    # this is a clause rather than a parameter. api.stats still counts it, so the
-    # 1,691 → 1,647 gap on the corpus page stays explained.
-    clauses.append("a.is_transactional = 0")
-    return (" AND ".join(clauses), values)
+    """The SQL rendering of the one eligibility predicate.
+
+    The predicate itself lives in :mod:`.filters` because the vector arm needs
+    the same question asked of LanceDB, and two hand-written predicates is how
+    the two arms come to disagree about what "2023, interviews, no transactions"
+    means — a drift that looks like a ranking problem forever.
+    """
+    return FilterSet.from_params(params).sql()
 
 
 BROWSE_SNIPPET_CHARS = 240
@@ -550,9 +548,42 @@ def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> d
 
 
 def search(
-    conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict]
+    conn: sqlite3.Connection,
+    params: SearchParams,
+    vocab: dict[str, dict],
+    hybrid: Any = None,
 ) -> dict:
+    """The one search entry point: BM25 alone, or BM25 fused with the vector arm.
+
+    Degradation is scoped to the *gateway*: if the embedding call fails or times
+    out, the reader gets the BM25 answer with a ``hybrid.degraded`` note rather
+    than a 503, because search must not become dependent on a metered API. A
+    store that disagrees with the index is **not** a degradation — that is a
+    deployment mistake and raises (§4.5c), scoped to the flag so `hybrid=0`
+    keeps serving.
+    """
     started = time.perf_counter()
+    if params.hybrid and not params.partial:
+        try:
+            return _hybrid_search(conn, params, vocab, hybrid, started)
+        except embed_module.EmbedError as error:
+            degraded = _bm25_search(conn, params, vocab, started)
+            degraded["hybrid"] = {
+                "enabled": False,
+                "degraded": True,
+                "reason": error.code,
+            }
+            return degraded
+        except StoreError as error:
+            # A store that disagrees with the index is a deployment mistake, not
+            # an operational condition: it must look like a failure (§4.5c).
+            raise ApiError(500, error.code, str(error), error.detail) from error
+    return _bm25_search(conn, params, vocab, started)
+
+
+def _bm25_search(
+    conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict], started: float
+) -> dict:
     if not params.q:
         return _browse(conn, params, started)
     if params.partial:
@@ -634,6 +665,211 @@ def _result(row: tuple) -> dict:
         "end_char": end_char,
         "article_href": f"/article/{message_id}#c{chunk_id.replace(':', '-')}",
     }
+
+
+
+#: How much of a passage a vector-only hit shows. It gets a *leading excerpt*,
+#: not a snippet: FTS5's ``snippet()`` needs a MATCH context and knows where the
+#: query terms were, and a passage the vector arm found *because it contains none
+#: of them* has nothing to mark. Fabricating a highlight would be a lie about why
+#: the result is there (§4.5d).
+HYBRID_EXCERPT_CHARS = 240
+
+
+def _vector_only_result(row: tuple, distance: float) -> dict:
+    (chunk_id, message_id, start_char, end_char, sent_at, subject, kind, sender, text) = row
+    excerpt = (text or "").strip().replace("\n", " ")
+    return {
+        "chunk_id": chunk_id,
+        "message_id": message_id,
+        "sent_at": sent_at,
+        "subject": subject,
+        "kind": kind,
+        "sender": sender,
+        # A fused score is a different scale from -bm25, so it never overwrites
+        # ``score``: there is no BM25 value for this row, and a null says so.
+        "score": None,
+        "snippet": html.escape(excerpt[:HYBRID_EXCERPT_CHARS]),
+        "start_char": start_char,
+        "end_char": end_char,
+        "article_href": f"/article/{message_id}#c{chunk_id.replace(':', '-')}",
+        "matched_by": "vector",
+        "fused_score": None,
+        "vector_distance": round(distance, 6),
+    }
+
+
+def _fused_rows(
+    conn: sqlite3.Connection,
+    match: str,
+    where_sql: str,
+    values: list[Any],
+    ids: list[str],
+    labels: dict[str, str],
+    distances: dict[str, float],
+) -> dict[str, dict]:
+    """Fetch the card for every fused id, from whichever arm can describe it."""
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows: dict[str, dict] = {}
+
+    # Ids the FTS arm returned get the real snippet, marks and all — unchanged.
+    for row in conn.execute(
+        f"{CHUNK_FIELDS}{CHUNK_JOINS} WHERE chunks_fts MATCH ?{where_sql}"
+        f" AND c.chunk_id IN ({placeholders}) ORDER BY rank, c.id",
+        [*SNIPPET_ARGS, match, *values, *ids],
+    ):
+        if row[0] in labels and labels[row[0]] in {"bm25", "both"}:
+            rows[row[0]] = _result(row)
+
+    # Ids only the vector arm found have no MATCH context to excerpt from, so
+    # they get the opening of the passage instead of a highlight.
+    missing = [chunk_id for chunk_id in ids if chunk_id not in rows]
+    if missing:
+        for row in conn.execute(
+            "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
+            " a.subject, a.kind, a.sender, substr(c.text, 1, ?)"
+            " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+            f" WHERE c.chunk_id IN ({','.join('?' * len(missing))})",
+            [HYBRID_EXCERPT_CHARS, *missing],
+        ):
+            rows[row[0]] = _vector_only_result(row, distances.get(row[0], 0.0))
+
+    for chunk_id, result in rows.items():
+        result["matched_by"] = labels.get(chunk_id, "vector")
+    return rows
+
+
+def _hybrid_search(
+    conn: sqlite3.Connection,
+    params: SearchParams,
+    vocab: dict[str, dict],
+    backend: Any,
+    started: float,
+) -> dict:
+    """BM25 fused with a vector arm, by reciprocal rank (design §4.5)."""
+    if backend is None:
+        raise ApiError(
+            500,
+            "store_missing",
+            "hybrid=1 needs a vector store; run `python -m stratechery_search.embed_corpus`",
+            {},
+        )
+    if not params.q:
+        # Browse is a filter over everything; there is no text to embed.
+        return _bm25_search(conn, params, vocab, started)
+
+    span = fusion.window(params.offset, params.limit)
+
+    # The FTS arm keeps the whole existing rewrite path: vocab expansion, and —
+    # under `partial=1`, which hybrid never sees — the resolver. The asymmetry
+    # this leaves (FTS searches rewritten terms, the vector arm embeds the
+    # original text) is a property to observe, not a bug to smooth over (§4.2).
+    if vocab:
+        match, expansions = expand_query(params.q, vocab)
+    else:
+        match, expansions = fts_query(params.q), []
+    filters = FilterSet.from_params(params)
+    where, values = filters.sql()
+    where_sql = f" AND {where}"
+
+    fts_ids = [
+        row[0]
+        for row in conn.execute(
+            "SELECT c.chunk_id"
+            f"{CHUNK_JOINS} WHERE chunks_fts MATCH ?{where_sql}"
+            " ORDER BY rank, c.id LIMIT ?",
+            [match, *values, span],
+        )
+    ]
+
+    vector = embed_module.embed([params.q], input_type="search_query")[0]
+    hits = backend.search(vector, filters=filters, limit=span)
+    vector_ids = [hit.chunk_id for hit in hits]
+    distances = {hit.chunk_id: hit.distance for hit in hits}
+
+    fused = fusion.fuse([fts_ids, vector_ids])
+    labels = fusion.matched_by(fts_ids, vector_ids)
+    rows = _fused_rows(
+        conn, match, where_sql, values, [chunk_id for chunk_id, _ in fused], labels, distances
+    )
+
+    if params.group == "article":
+        results, total = _fused_grouped(params, fused, rows)
+    else:
+        page = fused[params.offset : params.offset + params.limit]
+        results = []
+        for chunk_id, score in page:
+            card = rows.get(chunk_id)
+            if card is None:  # an id the store has and SQLite does not: see parity
+                continue
+            results.append({**card, "fused_score": round(score, 8)})
+        total = len(fused)
+
+    return {
+        "query": {
+            "raw": params.q,
+            "rewritten": match,
+            "expansions": expansions,
+            "resolved": [],
+        },
+        "total": total,
+        "limit": params.limit,
+        "offset": params.offset,
+        "took_ms": int((time.perf_counter() - started) * 1000),
+        "results": results,
+        "facets": _facets(conn, match, where, values),
+        # Additive, and deliberately verbose: `total` is not comparable across
+        # hybrid=0 and hybrid=1 (each arm contributes up to `window` passages),
+        # so the two numbers that make the difference legible ship with it.
+        "hybrid": {
+            "enabled": True,
+            "degraded": False,
+            "window": span,
+            "fts_hits": len(fts_ids),
+            "vector_hits": len(vector_ids),
+            "both": sum(1 for label in labels.values() if label == "both"),
+            # §4.2: the number the similarity floor will be set from in week one,
+            # logged rather than guessed.
+            "top1_distance": round(min(distances.values()), 6) if distances else None,
+        },
+    }
+
+
+def _fused_grouped(
+    params: SearchParams, fused: list[tuple[str, float]], rows: dict[str, dict]
+) -> tuple[list[dict], int]:
+    """Fold the fused passage list into articles, then page by article.
+
+    Fusion happens at passage level and the fold happens after it (§2): the
+    article takes the rank of its best *fused* passage, and ``limit``/``offset``
+    count articles, so page two does not repeat page one's articles.
+    """
+    order: list[Any] = []
+    by_article: dict[Any, list[dict]] = {}
+    for chunk_id, score in fused:
+        card = rows.get(chunk_id)
+        if card is None:
+            continue
+        message_id = card["message_id"]
+        if message_id not in by_article:
+            by_article[message_id] = []
+            order.append(message_id)
+        by_article[message_id].append({**card, "fused_score": round(score, 8)})
+
+    results = []
+    for message_id in order[params.offset : params.offset + params.limit]:
+        lead, *rest = by_article[message_id]
+        results.append(
+            {
+                **lead,
+                "matched_passages": len(by_article[message_id]),
+                "more_total": len(rest),
+                "more_passages": rest[:MAX_MORE_PASSAGES],
+            }
+        )
+    return results, len(order)
 
 
 def _grouped(

@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import api
+from . import api, vector_store
 
 DEFAULT_PORT = 8080
 DEFAULT_ARCHIVE_ROOT = Path("/archive")
@@ -75,6 +75,12 @@ class Config:
         self.static_dir = static_dir
         self.vocab_path = vocab_path or Path(
             os.environ.get("VOCAB_PATH") or DEFAULT_VOCAB_PATH
+        )
+        # Phase 2. The directory is declared here so a missing store is a clear
+        # 500 on `hybrid=1` rather than a path that depends on the working
+        # directory. Nothing opens it until a hybrid request arrives.
+        self.store_path = Path(
+            os.environ.get("LANCEDB_PATH", data_root / "index" / "lancedb")
         )
 
 
@@ -202,7 +208,14 @@ class Handler(BaseHTTPRequestHandler):
                 params = api.parse_search_params(query)
                 vocab = api.load_vocab(self.config.vocab_path)
                 self._with_index(
-                    lambda conn: self._send_json(api.search(conn, params, vocab))
+                    lambda conn: self._send_json(
+                        api.search(
+                            conn,
+                            params,
+                            vocab,
+                            hybrid=getattr(self.server, "hybrid", None),
+                        )
+                    )
                 )
             elif path.startswith("/article/"):
                 if self._wants_html():
@@ -337,6 +350,9 @@ class Server(ThreadingHTTPServer):
 def serve(config: Config) -> None:
     server = Server(("0.0.0.0", config.port), Handler)
     server.config = config  # type: ignore[attr-defined]
+    # Lazy by construction: constructing this imports nothing native and opens
+    # nothing. Only a `hybrid=1` request reaches through it (design §4.6).
+    server.hybrid = vector_store.Backend(config.store_path)  # type: ignore[attr-defined]
     print(
         f"stratechery-search listening on :{config.port} "
         f"(index={config.index_path}, static={config.static_dir})",
