@@ -35,6 +35,14 @@ services:
       # a diff. /healthz reports the path and the term count it actually loaded.
       VOCAB_PATH: ${VOCAB_PATH:-/app/vocab.yaml}
       PORT: ${PORT:-8080}
+      # Phase 2: every hybrid search embeds the query at the gateway (design
+      # §4.4). Unset is not fatal — the default path never calls it — but
+      # `hybrid=1` without these is a failure on the flag, not a degraded search.
+      # The ryzen compose file is not git-tracked, so this box needs the same
+      # three lines added to /srv/docker/stratechery-search/docker-compose.yml.
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      EMBED_TIMEOUT_MS: ${EMBED_TIMEOUT_MS:-800}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       # Homepage (gethomepage) reads these straight off the container: the

@@ -4,7 +4,15 @@ version = "0.1.0"
 description = "A stratechery-search project generated with genproj"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+# Phase 1 was deliberately stdlib-only, and that is still true of everything on
+# the default path. The vector layer (phase 2) cannot preserve it, so the one
+# exception is pinned exactly rather than ranged: the wheel wraps a Rust core
+# whose on-disk format and builder API move between minor versions, and it is
+# imported lazily (only behind `hybrid=1`) so a broken install costs the flag,
+# not the service.
+dependencies = [
+    "lancedb==0.40.0",
+]
 
 [project.optional-dependencies]
 dev = [
