@@ -12,6 +12,7 @@ import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -334,6 +335,57 @@ def test_partial_must_be_a_boolean(service):
     assert body["error"]["code"] == "bad_request"
 
 
+def test_vocab_defaults_to_the_repo_file_not_the_data_root(monkeypatch):
+    # The synonym table is reviewed like code, so its default is the checkout's
+    # own vocab.yaml — not a file in the writable appdata volume.
+    from stratechery_search.server import Config
+
+    monkeypatch.delenv("VOCAB_PATH", raising=False)
+    assert Config().vocab_path == Path("vocab.yaml")
+    # The default is cwd-relative, like STATIC_DIR, and does not follow DATA_ROOT.
+    monkeypatch.setenv("DATA_ROOT", "/tmp/somewhere")
+    assert Config().vocab_path == Path("vocab.yaml")
+
+
+def test_vocab_path_env_overrides_the_default(monkeypatch, tmp_path):
+    from stratechery_search.server import Config
+
+    monkeypatch.setenv("VOCAB_PATH", str(tmp_path / "v.yaml"))
+    assert Config().vocab_path == tmp_path / "v.yaml"
+    # An empty value must not become Path("."), a directory that read_text()
+    # refuses on every search.
+    monkeypatch.setenv("VOCAB_PATH", "")
+    assert Config().vocab_path == Path("vocab.yaml")
+
+
+def test_a_real_vocabulary_file_drives_the_rewrite(tmp_path):
+    from stratechery_search.server import Config
+
+    path = tmp_path / "vocab.yaml"
+    path.write_text(
+        "terms:\n"
+        "  - canonical: aggregation theory\n"
+        "    aliases: [aggregation, aggregators]\n",
+        encoding="utf-8",
+    )
+    vocab = api.load_vocab(Config(vocab_path=path).vocab_path)
+    rewritten, expansions = api.expand_query("aggregation theory", vocab)
+    assert rewritten == '("aggregation" OR "aggregation theory" OR "aggregators")'
+    assert expansions[0]["canonical"] == "aggregation theory"
+    assert expansions[0]["source"] == "vocab.yaml"
+
+
+def test_a_malformed_vocabulary_file_is_an_api_error(tmp_path):
+    # Now that the file is committed, a typo is a reviewable mistake: it must
+    # surface as an answered 503, not an uncaught VocabError per search.
+    path = tmp_path / "vocab.yaml"
+    path.write_text("bogus line\n", encoding="utf-8")
+    with pytest.raises(api.ApiError) as raised:
+        api.load_vocab(path)
+    assert raised.value.status == 503
+    assert raised.value.code == "vocabulary_invalid"
+
+
 def test_a_missing_resolver_degrades_instead_of_failing(corpus):
     # A new image against an index built before `terms` existed is a real window:
     # the two deploy independently. Type-ahead must then behave like the search it
@@ -496,7 +548,10 @@ def test_unbuilt_index_is_503(tmp_path):
         index_path=tmp_path / "missing.sqlite",
         archive_root=tmp_path,
         static_dir=tmp_path / "dist",
-        vocab_path=None,
+        # None now means the repo's own vocab.yaml; absence has to be said out
+        # loud, or a committed synonym table would silently rewrite what these
+        # tests assert.
+        vocab_path=tmp_path / "no-vocab.yaml",
     )
     server = Server(("127.0.0.1", 0), Handler)
     server.config = config

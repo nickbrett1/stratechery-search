@@ -331,9 +331,17 @@ def load_vocab(path: Path | None) -> dict[str, dict]:
     """
     if path is None or not path.exists():
         return {}
-    from .vocab import load_vocabulary
+    from .vocab import VocabError, load_vocabulary
 
-    return load_vocabulary(path)
+    try:
+        return load_vocabulary(path)
+    except VocabError as exc:
+        raise ApiError(
+            503,
+            "vocabulary_invalid",
+            "vocab.yaml is not in the accepted shape",
+            {"path": str(path), "detail": str(exc)},
+        ) from exc
 
 
 def expand_query(raw: str, vocab: dict[str, dict]) -> tuple[str, list[dict]]:

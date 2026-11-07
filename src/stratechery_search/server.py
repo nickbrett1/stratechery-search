@@ -24,6 +24,12 @@ DEFAULT_PORT = 8080
 DEFAULT_ARCHIVE_ROOT = Path("/archive")
 DEFAULT_DATA_ROOT = Path("/data")
 DEFAULT_STATIC_DIR = Path("web/dist")
+#: The synonym table is a reviewable artifact, so it lives in the repository
+#: rather than in the writable data volume: an edit is then a diff, not a
+#: change that exists only on the host that made it. Resolved against the
+#: working directory for the same reason ``STATIC_DIR`` is — the process
+#: starts in the repo root in dev and in ``/app`` in the image.
+DEFAULT_VOCAB_PATH = Path("vocab.yaml")
 
 ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"}
 ASSET_CONTENT_TYPES = {
@@ -53,7 +59,7 @@ class Config:
         self.archive_root = archive_root
         self.static_dir = static_dir
         self.vocab_path = vocab_path or Path(
-            os.environ.get("VOCAB_PATH", data_root / "vocab.yaml")
+            os.environ.get("VOCAB_PATH") or DEFAULT_VOCAB_PATH
         )
 
 

@@ -8,7 +8,7 @@ a container definition, not a human typing flags:
 ``INDEX_PATH``                       ``search.sqlite`` (default ``$DATA_ROOT/index/search.sqlite``)
 ``ARCHIVE_ROOT``                     read-only archive mount (default ``/archive``)
 ``DATA_ROOT``                        writable data root (default ``/data``)
-``VOCAB_PATH``                       query-time synonyms (default ``$DATA_ROOT/vocab.yaml``)
+``VOCAB_PATH``                       query-time synonyms (default ``vocab.yaml`` in the repo root, like ``STATIC_DIR``)
 ``STATIC_DIR``                       built frontend (default ``web/dist``)
 ===================================  ==========================================
 """

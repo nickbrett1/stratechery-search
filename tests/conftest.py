@@ -45,7 +45,10 @@ def service(corpus):
         index_path=index_path,
         archive_root=archive,
         static_dir=dist,
-        vocab_path=None,
+        # None now means the repo's own vocab.yaml; absence has to be said out
+        # loud, or a committed synonym table would silently rewrite what these
+        # tests assert.
+        vocab_path=archive.parent / "no-vocab.yaml",
     )
     server = Server(("127.0.0.1", 0), Handler)
     server.config = config
