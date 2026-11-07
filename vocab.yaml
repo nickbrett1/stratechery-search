@@ -1,11 +1,17 @@
 # The query-time synonym table.
 #
-# Expanding a query is only ever a recall move: an entry turns the token the
-# reader typed into "(canonical OR alias)" so an article that uses the other
-# surface can still be found. Every entry below was measured against the live
-# index, and the `buys` figure in its comment is the evidence for it. Do not add
-# an entry without that measurement: an alias that is also an ordinary English
-# word ("WHO", "AI") would fire on ordinary prose and widen every search.
+# Expanding a query is recall-only when the reader types an ALIAS: an entry
+# turns that token into "(canonical OR alias)" so an article that uses the other
+# surface can still be found. It is NOT recall-only when the reader types a
+# multi-word canonical: the rewrite replaces word-AND with a phrase, so words
+# that co-occur without being adjacent are lost and the search NARROWS.
+# tests/test_vocab.py::test_a_multi_word_canonical_query_narrows_to_the_phrase
+# pins that, deliberately, rather than leaving it to be discovered.
+#
+# Every entry below was measured against the live index, and the `buys` figure
+# in its comment is the evidence for it. Do not add an entry without that
+# measurement: an alias that is also an ordinary English word ("WHO", "AI")
+# would fire on ordinary prose and widen every search.
 #
 # Shape and parser: src/stratechery_search/vocab.py. One canonical term, one
 # `aliases: [...]` list per entry; the canonical is added to its own aliases by
