@@ -120,7 +120,15 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if path == "/healthz":
-                self._with_index(lambda conn: self._send_json(api.health(conn)))
+                # Loading the table here as well as on /search is what makes
+                # "is the file firing?" answerable: the response reports the
+                # path it looked at and how many terms it found.
+                vocab = api.load_vocab(self.config.vocab_path)
+                self._with_index(
+                    lambda conn: self._send_json(
+                        api.health(conn, self.config.vocab_path, vocab)
+                    )
+                )
             elif path == "/stats":
                 if self._wants_html():
                     self._serve_static("index.html")

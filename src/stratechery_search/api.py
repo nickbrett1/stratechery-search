@@ -380,6 +380,14 @@ def expand_query(raw: str, vocab: dict[str, dict]) -> tuple[str, list[dict]]:
             }
         )
 
+    if not expansions:
+        # Nothing in the table fired. Return the plain expression byte for byte
+        # rather than the ``AND``-joined equivalent below: ``rewritten`` is part
+        # of the response and the UI shows it, so "a query that matches no entry
+        # behaves as before" has to mean identical output, not merely an
+        # expression that ranks the same.
+        return fts_query(raw), []
+
     parts.extend(f'"{word}"' for word in words if word.lower() not in taken)
     return (" AND ".join(parts) if parts else fts_query(raw)), expansions
 
@@ -961,10 +969,30 @@ def stats(conn: sqlite3.Connection) -> dict:
     }
 
 
-def health(conn: sqlite3.Connection) -> dict:
+def health(
+    conn: sqlite3.Connection,
+    vocab_path: Path | None = None,
+    vocab: dict[str, dict] | None = None,
+) -> dict:
+    """The index's own counts, plus whether the synonym table is loaded.
+
+    ``vocab`` is reported because "is the rewrite firing?" was otherwise
+    unanswerable from a running service: a file the image never copied in looks
+    exactly like a healthy one, except that it expands nothing. ``terms: 0`` is
+    therefore the honest answer, and the path says which file produced it.
+    """
     row = conn.execute(
         "SELECT articles, chunks, built_at FROM corpus_stats WHERE singleton = 1"
     ).fetchone()
     if row is None:
         raise ApiError(503, "index_degraded", "corpus_stats is empty")
-    return {"status": "ok", "articles": row[0], "chunks": row[1], "built_at": row[2]}
+    return {
+        "status": "ok",
+        "articles": row[0],
+        "chunks": row[1],
+        "built_at": row[2],
+        "vocab": {
+            "path": None if vocab_path is None else str(vocab_path),
+            "terms": len(vocab or {}),
+        },
+    }

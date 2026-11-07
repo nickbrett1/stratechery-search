@@ -1,0 +1,25 @@
+# The query-time synonym table.
+#
+# Expanding a query is only ever a recall move: an entry turns the token the
+# reader typed into "(canonical OR alias)" so an article that uses the other
+# surface can still be found. Every entry below was measured against the live
+# index, and the `buys` figure in its comment is the evidence for it. Do not add
+# an entry without that measurement: an alias that is also an ordinary English
+# word ("WHO", "AI") would fire on ordinary prose and widen every search.
+#
+# Shape and parser: src/stratechery_search/vocab.py. One canonical term, one
+# `aliases: [...]` list per entry; the canonical is added to its own aliases by
+# the parser, so it is not repeated here.
+terms:
+  # buys 182 articles: full name returns 44, acronym returns 224.
+  - canonical: Taiwan Semiconductor Manufacturing
+    aliases: [TSMC]
+  # buys 27; A-B = 0 — the author never spells it out without the acronym.
+  - canonical: Semiconductor Manufacturing International
+    aliases: [SMIC]
+  # buys 15-24, clean era cut (AUC 0.989-1.000) at the March 2024 enactment.
+  - canonical: Digital Markets Act
+    aliases: [DMA]
+  # buys 8, AUC 1.000.
+  - canonical: Child Sexual Abuse Material
+    aliases: [CSAM]
