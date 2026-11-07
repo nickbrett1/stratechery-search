@@ -64,6 +64,19 @@ def build(tmp_path, index_path, *, limit=None, batch=2):
     )
 
 
+def test_the_corpus_pass_budgets_its_own_timeout(store, fake_vectors, tmp_path, monkeypatch):
+    """End to end: the pass reports the budget it actually spent, not the query one.
+
+    Set the query timeout to its floor and the pass still runs at the corpus
+    budget — the failure at 800 ms was *in the real pass*, so the assertion that
+    matters is the one made through ``run()``, not about the constant.
+    """
+    monkeypatch.setenv("EMBED_TIMEOUT_MS", "800")
+    summary = build(tmp_path, store[2], limit=2)
+    assert summary["timeout_ms"] == embed_module.CORPUS_TIMEOUT_MS
+    assert summary["embedded"] == 2
+
+
 def test_the_full_fixture_corpus_round_trips(store, fake_vectors, tmp_path):
     store_path, conn, index_path = store
     summary = build(tmp_path, index_path)

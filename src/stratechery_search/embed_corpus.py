@@ -4,6 +4,10 @@
     python -m stratechery_search.embed_corpus --limit 96  # the sample (~$0.003)
     python -m stratechery_search.embed_corpus             # the full pass (~$1)
 
+It budgets its own timeout (``EMBED_CORPUS_TIMEOUT_MS``, default 5 s, see
+:data:`stratechery_search.embed.CORPUS_TIMEOUT_MS`): a real 96-document batch
+takes ~1 s, so the query budget would abort the pass on its first batch.
+
 Three properties are the reason this is a module rather than a script:
 
 **Resumable.** Each batch's rows are written as it succeeds, and a chunk already
@@ -126,11 +130,15 @@ def run(
         if limit is not None:
             pending = pending[:limit]
 
-        config = embed_module.EmbedConfig.from_env()
+        config = embed_module.EmbedConfig.for_corpus()
         summary = {
             "index": str(index_path),
             "store": str(store_path),
             "model": config.model,
+            # Recorded because it is the number that made the pass possible: the
+            # query budget (800 ms) aborts a 96-document batch, and a run record
+            # without this field cannot tell which budget produced the rows.
+            "timeout_ms": config.timeout_ms,
             "already_stored": len(existing),
             "pending": len(pending),
             "embedded": 0,

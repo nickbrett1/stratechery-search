@@ -14,6 +14,7 @@ a container definition, not a human typing flags:
 ``EMBED_API_KEY``                    gateway key (falls back to ``LITELLM_API_KEY``)
 ``EMBED_MODEL``                      embedding alias (default ``cohere/embed-v5.0``, 2,048-dim)
 ``EMBED_TIMEOUT_MS``                 query-embed timeout, clamped to [800, 3000] (default 800, measured)
+``EMBED_CORPUS_TIMEOUT_MS``          corpus-embed timeout, clamped to [1000, 30000] (default 5000, measured; the corpus pass only)
 ===================================  ==========================================
 
 The last four are phase 2 and are read by :mod:`stratechery_search.embed`, not by

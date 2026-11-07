@@ -30,7 +30,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 #: The alias that resolves to Cohere's ``embed-v5.0-pro`` (design §4.7). The
 #: dimension is 2,048 — **not** 1,024, which is the older v3.0 size; a schema
@@ -62,6 +62,24 @@ INPUT_TYPES = ("search_document", "search_query")
 DEFAULT_TIMEOUT_MS = 800
 TIMEOUT_FLOOR_MS = 800
 TIMEOUT_CEILING_MS = 3000
+
+#: Corpus-embed timeout — the same question asked about a different call, with
+#: the opposite answer.
+#:
+#: A *query* embed that runs long degrades a search, so it is bounded tightly.
+#: A *document* batch that runs long aborts one step of a resumable job, so the
+#: only thing to bound is "does not hang": being slow costs a batch, being cut
+#: off costs the batch it was about to finish. Measured on the live gateway,
+#: 2026-11-07, one real 96-document batch, three attempts: **1.26 s / 0.96 s /
+#: 1.03 s**. Rule: 4 x the slowest observation = 5,040 ms, set to 5,000 — the
+#: headroom is for a colder gateway and a slower batch, not for a slow query.
+#:
+#: This exists because the corpus pass first inherited ``DEFAULT_TIMEOUT_MS``
+#: and died on batch 1 (memo stage 2.1): 800 ms was derived from *query* p95 and
+#: has no argument to make about a 96-document request.
+CORPUS_TIMEOUT_MS = 5000
+CORPUS_TIMEOUT_FLOOR_MS = 1000
+CORPUS_TIMEOUT_CEILING_MS = 30000
 
 
 class EmbedError(Exception):
@@ -112,6 +130,21 @@ class EmbedConfig:
             timeout_ms=_clamp_timeout(source.get("EMBED_TIMEOUT_MS")),
         )
 
+    @classmethod
+    def for_corpus(cls, env: dict[str, str] | None = None) -> EmbedConfig:
+        """The same gateway, budgeted for a document batch instead of a query.
+
+        ``EMBED_CORPUS_TIMEOUT_MS`` is deliberately *not* ``EMBED_TIMEOUT_MS``:
+        inheriting the query budget is the defect this method exists to close,
+        and a config that could silently fall back to 800 ms would bring it
+        back the first time someone tuned the query side.
+        """
+        source = os.environ if env is None else env
+        return replace(
+            cls.from_env(source),
+            timeout_ms=_clamp_corpus_timeout(source.get("EMBED_CORPUS_TIMEOUT_MS")),
+        )
+
 
 def _clamp_timeout(raw: str | None) -> int:
     """Bound the configured timeout, because an unclamped one fails silently.
@@ -127,6 +160,23 @@ def _clamp_timeout(raw: str | None) -> int:
             "embed_config", f"EMBED_TIMEOUT_MS is not an integer: {raw!r}"
         ) from exc
     return max(TIMEOUT_FLOOR_MS, min(TIMEOUT_CEILING_MS, value))
+
+
+def _clamp_corpus_timeout(raw: str | None) -> int:
+    """Bound the corpus timeout too — a hang is still a hang, just a cheaper one.
+
+    The bounds are wide because the shape of the risk is different: a request
+    that legitimately takes two seconds is an ordinary document batch, so the
+    floor refuses a value that would cut one off, and the ceiling only stops a
+    typo from parking the pass for an hour.
+    """
+    try:
+        value = int(raw) if raw not in (None, "") else CORPUS_TIMEOUT_MS
+    except ValueError as exc:
+        raise EmbedError(
+            "embed_config", f"EMBED_CORPUS_TIMEOUT_MS is not an integer: {raw!r}"
+        ) from exc
+    return max(CORPUS_TIMEOUT_FLOOR_MS, min(CORPUS_TIMEOUT_CEILING_MS, value))
 
 
 def _request(config: EmbedConfig, body: dict) -> dict:

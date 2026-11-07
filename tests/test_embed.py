@@ -24,6 +24,9 @@ import pytest
 
 from stratechery_search import embed as embed_module
 from stratechery_search.embed import (
+    CORPUS_TIMEOUT_CEILING_MS,
+    CORPUS_TIMEOUT_FLOOR_MS,
+    CORPUS_TIMEOUT_MS,
     DEFAULT_TIMEOUT_MS,
     EMBED_DIM,
     MAX_BATCH,
@@ -173,6 +176,42 @@ def test_the_configured_timeout_is_the_one_used(monkeypatch):
         config=EmbedConfig(base_url="http://gateway:4000", timeout_ms=1200),
     )
     assert seen["timeout"] == 1.2
+
+
+def test_the_corpus_pass_does_not_inherit_the_query_timeout():
+    """The defect this closes, as a test: at 800 ms the full pass died on batch 1.
+
+    A real 96-document batch measured 1.26/0.96/1.03 s on the live gateway, so a
+    corpus pass budgeted by *query* p95 sorts its own corpus into a timeout.
+    """
+    env = {"EMBED_BASE_URL": "http://gateway:4000", "EMBED_TIMEOUT_MS": "800"}
+    assert EmbedConfig.from_env(env).timeout_ms == TIMEOUT_FLOOR_MS
+    assert EmbedConfig.for_corpus(env).timeout_ms == CORPUS_TIMEOUT_MS
+
+
+def test_the_corpus_timeout_is_bounded_and_the_query_budget_cannot_shrink_it():
+    assert EmbedConfig.for_corpus({}).timeout_ms == CORPUS_TIMEOUT_MS
+    assert EmbedConfig.for_corpus({"EMBED_CORPUS_TIMEOUT_MS": "10"}).timeout_ms == CORPUS_TIMEOUT_FLOOR_MS
+    assert EmbedConfig.for_corpus({"EMBED_CORPUS_TIMEOUT_MS": "999999"}).timeout_ms == CORPUS_TIMEOUT_CEILING_MS
+    assert EmbedConfig.for_corpus({"EMBED_CORPUS_TIMEOUT_MS": "8000"}).timeout_ms == 8000
+    # EMBED_TIMEOUT_MS is a query setting; it must not reach the corpus budget.
+    assert EmbedConfig.for_corpus({"EMBED_TIMEOUT_MS": "3000"}).timeout_ms == CORPUS_TIMEOUT_MS
+
+
+def test_the_corpus_request_waits_seconds_not_milliseconds(monkeypatch):
+    seen = {}
+
+    def fake_request(config, body):
+        seen["timeout"] = config.timeout_s
+        return {"data": [{"index": 0, "embedding": [0.1] * EMBED_DIM}]}
+
+    monkeypatch.setattr(embed_module, "_request", fake_request)
+    embed(
+        ["a passage"],
+        input_type="search_document",
+        config=EmbedConfig.for_corpus({"EMBED_BASE_URL": "http://gateway:4000"}),
+    )
+    assert seen["timeout"] == 5.0
 
 
 def test_the_gateway_is_read_from_the_names_the_host_already_has():
