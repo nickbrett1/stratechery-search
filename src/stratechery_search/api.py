@@ -96,12 +96,19 @@ class SearchParams:
     # matched by prefix. Off by default, so the MCP adapter, a bookmarked URL and
     # `curl` keep meaning exactly what they meant — a complete question.
     partial: bool = False
-    # Phase 2: fuse the BM25 arm with a vector arm over LanceDB. Off by default,
-    # and additive: a rewrite the reader cannot see is one they cannot trust, so
-    # the default response must stay byte-identical. Hybrid is also forced off
-    # under `partial=1` — type-ahead fires a request per keystroke, and a live
-    # embed call on each is a latency question, not a money one (§4.2).
-    hybrid: bool = False
+    # Phase 2: fuse the BM25 arm with a vector arm over LanceDB. **On by
+    # default since 2026-11-07** (`hybrid=0` turns it off), because the corpus
+    # pass is complete, parity is asserted, and the flag stops being a flag once
+    # the thing it guards is deployed — a feature nobody switches on is not a
+    # feature. Three paths do not reach it: `partial=1` (type-ahead fires a
+    # request per keystroke and a live embed call on each is a latency question,
+    # not a money one, §4.2), an empty `q` (nothing to embed), and a server with
+    # no store — that degrades to BM25 rather than taking search down, because a
+    # default that can 500 every search is not a default. `hybrid_explicit`
+    # separates "asked for and cannot be honoured" (a 500) from "would have
+    # happened anyway" (a degraded 200).
+    hybrid: bool = True
+    hybrid_explicit: bool = False
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -146,6 +153,7 @@ def _has_filter(params: SearchParams) -> bool:
 def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
     """Turn raw querystring pairs into validated parameters."""
     raw_q = (query.get("q") or [""])[0].strip()
+    hybrid_raw = parse_bool((query.get("hybrid") or [None])[0], name="hybrid")
     if len(raw_q) > MAX_QUERY_CHARS:
         raise ApiError(
             400,
@@ -204,7 +212,8 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
         offset=offset,
         group=group,
         partial=bool(parse_bool((query.get("partial") or [None])[0], name="partial")),
-        hybrid=bool(parse_bool((query.get("hybrid") or [None])[0], name="hybrid")),
+        hybrid=True if hybrid_raw is None else hybrid_raw,
+        hybrid_explicit=hybrid_raw is not None,
     )
     if not params.q and not _has_filter(params):
         # An empty q is 400 unless a filter narrows the corpus. "Everything" is
@@ -564,6 +573,13 @@ def search(
     """
     started = time.perf_counter()
     if params.hybrid and not params.partial:
+        if hybrid is None and not params.hybrid_explicit:
+            # No store wired into this process and nobody asked for one (tests,
+            # the MCP adapter, a bare `python -m` run). Hybrid is the default, so
+            # this has to be an ordinary BM25 answer: a default that can 500
+            # every search is not a default. An *explicit* `hybrid=1` still
+            # fails loudly below.
+            return _bm25_search(conn, params, vocab, started)
         try:
             return _hybrid_search(conn, params, vocab, hybrid, started)
         except embed_module.EmbedError as error:
@@ -795,8 +811,21 @@ def _hybrid_search(
         conn, match, where_sql, values, [chunk_id for chunk_id, _ in fused], labels, distances
     )
 
+    # `total` is the number of passages that matched — the same number BM25
+    # reports for the same query, because it is the same expression run against
+    # the same arm. The *fused* set is what can be ranked, and the fusion window
+    # caps it at 200, so it ships separately in the `hybrid` block. Without both,
+    # "86" and "1,131" read as a disagreement about the corpus rather than a
+    # statement about the window.
+    matched_total = conn.execute(
+        "SELECT count(*) FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
+        " JOIN articles a ON a.message_id = c.message_id"
+        f" WHERE chunks_fts MATCH ?{where_sql}",
+        [match, *values],
+    ).fetchone()[0]
+
     if params.group == "article":
-        results, total = _fused_grouped(params, fused, rows)
+        results, article_total = _fused_grouped(params, fused, rows)
     else:
         page = fused[params.offset : params.offset + params.limit]
         results = []
@@ -805,7 +834,6 @@ def _hybrid_search(
             if card is None:  # an id the store has and SQLite does not: see parity
                 continue
             results.append({**card, "fused_score": round(score, 8)})
-        total = len(fused)
 
     return {
         "query": {
@@ -814,19 +842,21 @@ def _hybrid_search(
             "expansions": expansions,
             "resolved": [],
         },
-        "total": total,
+        "total": matched_total,
+        **({"article_total": article_total} if params.group == "article" else {}),
         "limit": params.limit,
         "offset": params.offset,
         "took_ms": int((time.perf_counter() - started) * 1000),
         "results": results,
         "facets": _facets(conn, match, where, values),
-        # Additive, and deliberately verbose: `total` is not comparable across
-        # hybrid=0 and hybrid=1 (each arm contributes up to `window` passages),
-        # so the two numbers that make the difference legible ship with it.
+        # `total` now means the same thing on both paths — passages matched — so
+        # `fused` is what makes the difference legible: it is how many of them
+        # this answer actually ranked, capped by the fusion window.
         "hybrid": {
             "enabled": True,
             "degraded": False,
             "window": span,
+            "fused": len(fused),
             "fts_hits": len(fts_ids),
             "vector_hits": len(vector_ids),
             "both": sum(1 for label in labels.values() if label == "both"),

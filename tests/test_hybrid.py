@@ -144,10 +144,53 @@ def search(conn, **kwargs):
     return api.search(conn, params, {}, hybrid=kwargs.pop("_backend", None))
 
 
-def test_hybrid_is_off_unless_asked(conn, embedded):
+def test_hybrid_is_the_default_once_a_store_is_wired(conn, embedded):
+    """2026-11-07: the flag stopped being a flag because the store exists."""
+    backend = FakeBackend(["152:0"])
+    body = api.search(conn, api.parse_search_params({"q": ["aggregation"]}), {}, hybrid=backend)
+    assert body["hybrid"]["enabled"] is True and body["hybrid"]["degraded"] is False
+    assert [call["input_type"] for call in embedded] == ["search_query"]
+
+
+def test_hybrid_can_still_be_turned_off_explicitly(conn, embedded):
+    backend = FakeBackend(["152:0"])
+    params = api.parse_search_params({"q": ["aggregation"], "hybrid": ["0"]})
+    body = api.search(conn, params, {}, hybrid=backend)
+    assert "hybrid" not in body or body["hybrid"] is None
+    assert embedded == [] and backend.calls == [], "hybrid=0 must not touch the arm"
+    assert body["total"] == 3
+
+
+def test_a_server_with_no_store_still_answers(conn, embedded):
+    """The default cannot be a 500: with no store the default search is BM25.
+
+    An *explicit* `hybrid=1` against the same server fails loudly — see
+    ``test_hybrid_without_a_store_is_a_500``; the difference is whether the
+    reader asked for something that cannot be honoured.
+    """
+    body = api.search(conn, api.parse_search_params({"q": ["aggregation"]}), {})
+    assert "hybrid" not in body or body["hybrid"] is None
+    assert body["results"] and embedded == []
+
+
+def test_total_is_the_match_count_not_the_window(conn, embedded):
+    """The tally has to mean the same thing on both paths, or the UI lies.
+
+    TSMC reports 1,131 passages on BM25 and reported 86 with hybrid's window
+    count; a reader cannot tell a corpus of 1,131 from a window of 50+50-14.
+    """
+    backend = FakeBackend(["152:0"])
+    params = api.parse_search_params({"q": ["aggregation"]})
+    bm25 = api.search(conn, api.parse_search_params({"q": ["aggregation"], "hybrid": ["0"]}), {})
+    hybrid = api.search(conn, params, {}, hybrid=backend)
+    assert hybrid["total"] == bm25["total"]
+    assert hybrid["hybrid"]["fused"] <= hybrid["hybrid"]["window"]
+
+
+def test_a_process_with_no_store_never_embeds(conn, embedded):
     body = api.search(conn, api.parse_search_params({"q": ["aggregation"]}), {})
     assert "hybrid" not in body or body.get("hybrid") is None
-    assert embedded == [], "the default path must never call the gateway"
+    assert embedded == [], "no store means no gateway call, default on or not"
 
 
 def test_a_vector_only_hit_gets_an_excerpt_and_no_invented_highlight(conn, embedded):
@@ -255,7 +298,13 @@ def test_hybrid_pages_by_article_after_fusion(conn, embedded):
     body = api.search(conn, params, {}, hybrid=backend)
     message_ids = [row["message_id"] for row in body["results"]]
     assert len(message_ids) == len(set(message_ids)), "one card per article"
-    assert body["total"] == len(message_ids)
+    # `total` is passages matched by the text arm, `article_total` is articles
+    # ranked after fusion — different questions, and the UI needs both. (The
+    # per-card `matched_passages` counts fused passages, vector-only ones
+    # included, so it is not the same number.)
+    assert body["total"] == 3
+    assert body["article_total"] == len(message_ids)
+    assert body["hybrid"]["fused"] == 4  # 3 FTS ids + 1 vector-only, all fused
     for row in body["results"]:
         assert row["matched_passages"] >= 1
         assert row["more_total"] == len(row["more_passages"])

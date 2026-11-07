@@ -352,6 +352,15 @@
               articles</span
             >
             <span class="hint num">newest first</span>
+          {:else if response.hybrid?.enabled}
+            <!-- Hybrid ranks a fused candidate set, which the window caps, out of
+               every passage BM25 matched. Both numbers, because either alone
+               lies: "86" says nothing about the corpus, "1,131" says nothing
+               about how many of them were actually ranked. -->
+            <span
+              ><b class="num">{response.hybrid.fused.toLocaleString()}</b> of
+              <b class="num">{response.total.toLocaleString()}</b> passages</span
+            >
           {:else}
             <span
               ><b class="num">{response.total.toLocaleString()}</b> passages</span
