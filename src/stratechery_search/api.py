@@ -40,12 +40,35 @@ MAX_MORE_PASSAGES = 20
 
 KINDS = ("update", "daily", "weekly", "interview", "other")
 
+#: bm25 column weights for ``chunks_fts``, in column order: (text, subject).
+#:
+#: The subject is the article's own name for what it is about, written by the
+#: person who wrote the article, and it is carried by **every** chunk of that
+#: article. A weight of 1 against the body's 10 therefore made a subject match
+#: worth one occurrence in a paragraph the body outweighed ten to one, and the
+#: effect was measurable: a query that *names an article* — `aggregation theory`
+#: — put that article 8th, because 308 chunks matched both words and the top
+#: three scores sat within half a percent of each other, broken by document
+#: length rather than relevance (`scripts/measure_bm25_weights.py`).
+#:
+#: 2.0 / 10.0 is the measured choice, not a round number. Over 192 articles
+#: addressed by their own subject line, weighting the subject higher moves the
+#: article to first place for 97.9% of them against 90.6% shipped; over 200
+#: sampled passages searched with an 8-word window from their own middle, the
+#: same change costs 1.5 points of top-1 (74.5% -> 73.0%). Going past 5:1
+#: stops buying subject accuracy and keeps costing passage accuracy; going all
+#: the way to 0/10 — the design note's original weights — costs 7.5 points of
+#: top-1, which is why the body still counts.
+BM25_TEXT_WEIGHT = 2.0
+BM25_SUBJECT_WEIGHT = 10.0
+
 # The chunk projection and its joins live here rather than inline: the grouped
 # path runs them twice (once ranked per chunk, once for the page) and a copy that
 # drifted would make the two disagree about what "this article's passages" means.
 CHUNK_FIELDS = (
     "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
-    " a.subject, a.kind, a.sender, bm25(chunks_fts, 10.0, 1.0) AS rank,"
+    f" a.subject, a.kind, a.sender, bm25(chunks_fts, {BM25_TEXT_WEIGHT},"
+    f" {BM25_SUBJECT_WEIGHT}) AS rank,"
     " snippet(chunks_fts, 0, ?, ?, ?, ?) AS snip"
 )
 CHUNK_JOINS = (
@@ -928,7 +951,8 @@ def _grouped(
     # the ungrouped query, which is the price of ordering articles by relevance.
     page = conn.execute(
         "WITH ranked AS MATERIALIZED ("
-        "SELECT c.message_id AS message_id, bm25(chunks_fts, 10.0, 1.0) AS rank"
+        "SELECT c.message_id AS message_id,"
+        f" bm25(chunks_fts, {BM25_TEXT_WEIGHT}, {BM25_SUBJECT_WEIGHT}) AS rank"
         f"{CHUNK_JOINS}{where}"
         ") SELECT message_id, min(rank) AS rank, count(*) AS matched FROM ranked"
         " GROUP BY message_id ORDER BY rank, message_id LIMIT ? OFFSET ?",

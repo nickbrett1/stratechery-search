@@ -110,20 +110,37 @@ def write_archive(root: Path) -> None:
     )
 
 
-def build(root: Path) -> tuple[Path, Path, Path]:
+def build(
+    root: Path, *, bodies: dict[int, str] | None = None
+) -> tuple[Path, Path, Path]:
     """Flatten, index, and return ``(archive, derived, index_path)``.
 
     The indexer's corpus-wide gates are written for 1,691 articles, so they are
     re-pointed at this corpus for the duration of the build and restored
     afterwards — the tests assert the audit, not the numbers.
+
+    ``bodies`` overrides the text of one or more articles *after* flattening and
+    before indexing, which is how a test can build a corpus whose bodies and
+    subjects disagree. It changes the corpus, so a test that passes it must not
+    also assert the default article/passage counts.
     """
     archive = root / "archive"
     derived = root / "derived"
     write_archive(archive)
     # Corpus-wide gates fail on three messages; the files are still written.
     flatten_main(["--archive", str(archive), "--out", str(derived)])
-    for message_id, body in ((152, ARTICLE_BODY), (85344, SECOND_BODY)):
-        (derived / f"{message_id}.txt").write_text(body + "\n", encoding="utf-8")
+    texts = {152: ARTICLE_BODY, 85344: SECOND_BODY, **(bodies or {})}
+    for message_id, body in texts.items():
+        path = derived / f"{message_id}.txt"
+        if bodies and message_id in bodies:
+            # An override must not move the article's length: `articles.chars`
+            # comes from the flatten manifest and the coverage gate compares the
+            # last chunk's end offset against it. Trimming and padding here keeps
+            # that gate meaningful rather than switching it off for the test's
+            # benefit — a body that is free to grow would make the gate a lie.
+            target = len(path.read_text(encoding="utf-8").rstrip("\n"))
+            body = body[:target].ljust(target)
+        path.write_text(body + "\n", encoding="utf-8")
     metas = build_index.load_metas(derived)
     expected_chunks = sum(
         len(
@@ -144,7 +161,9 @@ def build(root: Path) -> tuple[Path, Path, Path]:
         "null_asset_ids": (85344,),
     }
     try:
-        report = build_index.build(derived, archive, index_path, verify_idempotent=False)
+        report = build_index.build(
+            derived, archive, index_path, verify_idempotent=False
+        )
     finally:
         build_index.EXPECTED = saved
     if report["installed"] is not True:

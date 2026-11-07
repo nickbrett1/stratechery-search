@@ -45,6 +45,7 @@ the controls, the change is defensible.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 
 INDEX = "/data/index/search.sqlite"
@@ -60,11 +61,13 @@ WINDOW_SKIP = 4
 
 WEIGHTS = [
     (10.0, 1.0),  # shipped
-    (10.0, 3.0),
     (10.0, 10.0),
     (5.0, 10.0),
+    (2.0, 10.0),
     (1.0, 10.0),
-    (1.0, 5.0),
+    (2.0, 20.0),
+    (1.0, 20.0),
+    (1.0, 30.0),
     (0.0, 10.0),
 ]
 
@@ -151,6 +154,36 @@ def passage_sample(conn: sqlite3.Connection) -> list[dict]:
     return out
 
 
+SUBJECT_SAMPLE = 200
+SUBJECT_STRIDE = 7
+
+
+def subject_sample(conn: sqlite3.Connection) -> list[dict]:
+    """Articles addressed by their own subject line.
+
+    The counterpart to the passage suite and biased the other way: every row here
+    *should* be answered by the subject column, whatever the weighting. It is the
+    product question — "I typed the name of the post, give me the post" — and it
+    is the only suite that can show a subject-heavy weighting doing what it is
+    for. The publication suffix is stripped so the query is the topic, not the
+    furniture around it.
+    """
+    rows = conn.execute(
+        "SELECT message_id, subject FROM articles"
+        " WHERE is_transactional = 0 AND subject IS NOT NULL AND subject != ''"
+        " AND message_id % ? = 0 ORDER BY message_id LIMIT ?",
+        (SUBJECT_STRIDE, SUBJECT_SAMPLE),
+    ).fetchall()
+    out = []
+    for message_id, subject in rows:
+        topic = re.sub(r"\s*\(Stratechery[^)]*\)\s*$", "", subject).strip()
+        words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", topic)
+        if len(words) < 3:
+            continue
+        out.append({"message_id": message_id, "expression": quote(words)})
+    return out
+
+
 def main() -> int:
     conn = sqlite3.connect(f"file:{INDEX}?mode=ro", uri=True)
 
@@ -192,6 +225,46 @@ def main() -> int:
             json.dumps(
                 {
                     "suite": "passage",
+                    "weights": weight,
+                    "top1": round(top1 / total, 3),
+                    "top5": round(top5 / total, 3),
+                    "mrr": round(reciprocal / total, 3),
+                }
+            ),
+            flush=True,
+        )
+
+    subjects = subject_sample(conn)
+    print(json.dumps({"subject_queries": len(subjects)}))
+
+    for weight in WEIGHTS:
+        top1 = top5 = 0
+        reciprocal = 0.0
+        for row in subjects:
+            rows = conn.execute(
+                "SELECT c.message_id FROM chunks_fts"
+                " JOIN chunks c ON c.id = chunks_fts.rowid"
+                f" WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts, {weight[0]}, {weight[1]})",
+                (row["expression"],),
+            )
+            rank = next(
+                (
+                    i
+                    for i, (message_id,) in enumerate(rows, start=1)
+                    if message_id == row["message_id"]
+                ),
+                None,
+            )
+            if rank is None:
+                continue
+            top1 += rank == 1
+            top5 += rank <= 5
+            reciprocal += 1 / rank
+        total = len(subjects)
+        print(
+            json.dumps(
+                {
+                    "suite": "subject",
                     "weights": weight,
                     "top1": round(top1 / total, 3),
                     "top5": round(top5 / total, 3),

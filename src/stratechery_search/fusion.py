@@ -1,7 +1,7 @@
 """Reciprocal rank fusion: two orderings in, one ordering out.
 
-The two arms produce scores that cannot be compared — ``bm25(chunks_fts, 10.0,
-1.0)`` is negative and unbounded, cosine distance is 0..2 — so fusion is done on
+The two arms produce scores that cannot be compared — ``bm25(chunks_fts, 2.0,
+10.0)`` is negative and unbounded, cosine distance is 0..2 — so fusion is done on
 **ranks only**, which discards magnitudes and keeps each arm's intent:
 
     fused(d) = Σ_arms  1 / (k + rank_arm(d))        k = 60, rank is 1-based
