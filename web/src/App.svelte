@@ -36,10 +36,13 @@
     depth = currentDepth();
   }
 
-  function updateState(next) {
+  function updateState(next, { replace = false } = {}) {
     state = next;
-    depth += 1;
-    writeState(next, { historyState: { depth } });
+    // Typing must not fill the back stack: a debounced keystroke is a refinement
+    // of the current page, so it replaces the entry instead of adding one. Enter
+    // and every click still push (design note §3).
+    if (!replace) depth += 1;
+    writeState(next, { replace, historyState: { depth } });
   }
 
   const articleMatch = $derived(path.match(/^\/article\/(\d+)\/?$/));

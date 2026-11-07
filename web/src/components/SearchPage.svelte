@@ -12,11 +12,35 @@
   let loading = $state(false);
   let typed = $state(query.q);
 
+  // The last value this box pushed to the URL. The mirror below must not fight
+  // the reader: when a keystroke updates `query`, `typed` already holds that text,
+  // and resetting it from the URL would move the caret to the end mid-word.
+  let sent = $state(query.q);
+
+  // A reader typing is not asking a question yet. Below two characters the
+  // vocabulary is too broad to be a result set, and a mid-word zero-result state
+  // is a *false claim* ("this corpus has nothing for you") rather than an honest
+  // "I don't know yet" (design note §2.3, §3.3). The floor is the UI's: the API's
+  // own 400 for an empty q is correct and is never sent.
+  const MIN_PREFIX_CHARS = 2;
+  // 120 ms buys network quiet, not CPU: the query is ~1 ms, the tailnet hop is
+  // not, and a phone cannot make eight round trips in 150 ms (design note §3.1).
+  const TYPEAHEAD_DEBOUNCE_MS = 120;
+  // The same word-runs the server extracts, so the UI never sends text the API
+  // would refuse as "no searchable words" (`:` , an emoji, a lone `"`).
+  const WORD = /[^\W_]+(?:[-'][^\W_]+)*/u;
+
+  let pending = 0;
+
   // The URL is the query (§4): a parameter change is a fetch, and the input box
   // follows the URL rather than owning the truth.
   $effect(() => {
-    // The URL owns q; the box only mirrors it.
-    typed = query.q;
+    // …except for the change this box just made. Only an *external* change (back
+    // button, a link, a chip) rewrites the text under the caret.
+    if (query.q !== sent) {
+      typed = query.q;
+      sent = query.q;
+    }
   });
 
   // A filter with no query is a question too ("browse 2019"), so the landing
@@ -61,11 +85,50 @@
 
   function submit(event) {
     event.preventDefault();
+    // A keystroke still in the debounce must not fire after Enter: the reader has
+    // said this is the question, so the pending refinement is dropped.
+    clearTimeout(pending);
     const term = typed.trim();
     // Only what the reader typed is remembered: a query that arrived in a shared
-    // URL is not their search.
+    // URL is not their search. And only on Enter — a debounced keystroke is not a
+    // search anyone meant to keep.
     if (term) remember(term);
-    onchange({ ...query, q: term, offset: 0 });
+    sent = term;
+    // A submitted query is a *complete* question, so it is asked the way it was
+    // asked before type-ahead existed: no prefix, no resolver.
+    onchange({ ...query, q: term, offset: 0, partial: false });
+  }
+
+  function typeahead(event) {
+    typed = event.currentTarget.value;
+    clearTimeout(pending);
+    const term = typed.trim();
+
+    if (!term) {
+      // Clearing the box is not a query: send nothing, and fall back to the
+      // pre-typing screen rather than letting the API refuse an empty q.
+      if (!sent) return;
+      sent = "";
+      onchange(
+        { ...query, q: "", offset: 0, partial: false },
+        { replace: true },
+      );
+      return;
+    }
+    // Punctuation the server would refuse, and a first character either way:
+    // nothing is sent, and the previous results stay on screen labelled as what
+    // they are. This is the state that must never read as "no results".
+    if (!WORD.test(term) || term.length < MIN_PREFIX_CHARS) return;
+    if (term === sent) return;
+
+    pending = setTimeout(() => {
+      sent = term;
+      // `replace` keeps the back stack for places the reader chose to go.
+      onchange(
+        { ...query, q: term, offset: 0, partial: true },
+        { replace: true },
+      );
+    }, TYPEAHEAD_DEBOUNCE_MS);
   }
 
   // Active filters, as removable chips. The facet panel is a mile down a phone
@@ -188,6 +251,7 @@
   <input
     type="search"
     bind:value={typed}
+    oninput={typeahead}
     placeholder="Search the archive"
     aria-label="Search the corpus"
     autocapitalize="none"

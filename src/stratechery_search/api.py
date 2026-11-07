@@ -87,6 +87,10 @@ class SearchParams:
     # one and pages by article, which is what a reader wants — three passages of
     # one 2018 update in the top four results reads as repetition, not relevance.
     group: str = "passage"
+    # Type-ahead (design note §7): the last token is treated as half-typed and
+    # matched by prefix. Off by default, so the MCP adapter, a bookmarked URL and
+    # `curl` keep meaning exactly what they meant — a complete question.
+    partial: bool = False
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -188,6 +192,7 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
         limit=limit,
         offset=offset,
         group=group,
+        partial=bool(parse_bool((query.get("partial") or [None])[0], name="partial")),
     )
     if not params.q and not _has_filter(params):
         # An empty q is 400 unless a filter narrows the corpus. "Everything" is
@@ -212,6 +217,102 @@ def fts_query(raw: str) -> str:
     if not words:
         raise ApiError(400, "bad_request", "q contains no searchable words", {"q": raw})
     return " ".join(f'"{word}"' for word in words)
+
+
+#: A reader typing one character is not asking a question yet: a 1-character
+#: prefix matches a large slice of the vocabulary and ranks arbitrarily. Two is
+#: the floor, and below it the UI has not started rather than showing zero.
+MIN_PREFIX_CHARS = 2
+
+#: How many unstemmed terms a half-typed token may expand to. The group is ORed
+#: into the porter index, so this is also the width of the ranking done per
+#: keystroke; 20 was enough for every prefix tried by hand and keeps the
+#: expression small.
+MAX_RESOLVED_TERMS = 20
+
+
+def resolve_prefix(conn: sqlite3.Connection, token: str) -> list[str]:
+    """Unstemmed terms beginning with ``token``, most frequent first.
+
+    This is the resolver from design note §4.4, reduced to its cheapest form:
+    ``terms`` holds the corpus vocabulary as ``unicode61`` tokenised it (no
+    stemming), so "which real words start with ``aggregat``" is an index range
+    scan, not a ranking pass over a second index. The terms are handed back to
+    ``chunks_fts``, which stems them — one definition of a result, one ranker.
+
+    The upper bound is the prefix with the largest code point appended, which is
+    the standard way to say "starts with" to a bytewise TEXT index without giving
+    the index up to ``LIKE``.
+    """
+    keyword = token.casefold()
+    if len(keyword) < MIN_PREFIX_CHARS:
+        return []
+    rows = conn.execute(
+        "SELECT term FROM terms WHERE term >= ? AND term < ?"
+        " ORDER BY doc DESC, term LIMIT ?",
+        (keyword, keyword + "\U0010ffff", MAX_RESOLVED_TERMS),
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
+def _join(head_expression: str, tail_expression: str) -> str:
+    return (
+        f"{head_expression} AND {tail_expression}"
+        if head_expression
+        else tail_expression
+    )
+
+
+def partial_expression(
+    conn: sqlite3.Connection, raw: str, vocab: dict[str, dict]
+) -> tuple[str, list[dict], list[str]]:
+    """The expression for a half-typed query, plus what it was taken to mean.
+
+    The shape is *completed tokens AND (prefix OR resolved terms)*::
+
+        "commoditize" "your" AND ("comp"* OR "compete" OR "complement" ...)
+
+    Both halves of that group are needed. The porter prefix still works whenever
+    the typed text is short enough to be a stem prefix (``"aggr"*`` → 2,253
+    chunks), and the resolved terms are what work when it is not
+    (``"aggregat"*`` → nothing at all, because the index holds ``aggreg``).
+
+    Only the last token is prefixed: earlier tokens are words the reader has
+    finished, and turning them into prefixes would widen the result set and
+    flatten the ranking for no reader benefit.
+
+    Expansions are computed over the completed tokens only (design note §4.5): an
+    unfinished word is not a word, and expanding it would make the result set jump
+    between one keystroke and the next.
+    """
+    words = _WORD_RE.findall(raw)
+    if not words:
+        raise ApiError(400, "bad_request", "q contains no searchable words", {"q": raw})
+    head, tail = words[:-1], words[-1]
+
+    if head:
+        head_text = " ".join(head)
+        if vocab:
+            head_expression, expansions = expand_query(head_text, vocab)
+        else:
+            head_expression = " ".join(f'"{word}"' for word in head)
+            expansions = []
+    else:
+        head_expression, expansions = "", []
+
+    if len(tail) < MIN_PREFIX_CHARS:
+        # Too short to prefix, but still a token the reader is typing: quote it
+        # whole, which is exactly what ordinary search does.
+        return _join(head_expression, f'"{tail}"'), expansions, []
+
+    resolved = resolve_prefix(conn, tail)
+    alternatives = [f'"{tail}"*']
+    alternatives.extend(f'"{term}"' for term in resolved if term != tail.casefold())
+    return (
+        _join(head_expression, "(" + " OR ".join(alternatives) + ")"),
+        expansions,
+        resolved,
+    )
 
 
 def load_vocab(path: Path | None) -> dict[str, dict]:
@@ -395,7 +496,7 @@ def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> d
                 )
 
     return {
-        "query": {"raw": "", "rewritten": "", "expansions": []},
+        "query": {"raw": "", "rewritten": "", "expansions": [], "resolved": []},
         "browse": True,
         "total": total,
         "article_total": article_total,
@@ -413,10 +514,14 @@ def search(
     started = time.perf_counter()
     if not params.q:
         return _browse(conn, params, started)
-    if vocab:
+    if params.partial:
+        match, expansions, resolved = partial_expression(conn, params.q, vocab)
+    elif vocab:
         match, expansions = expand_query(params.q, vocab)
+        resolved = []
     else:
         match, expansions = fts_query(params.q), []
+        resolved = []
     rewritten = match
 
     where, values = _filters(params)
@@ -447,6 +552,10 @@ def search(
             "raw": params.q,
             "rewritten": rewritten,
             "expansions": expansions,
+            # What a half-typed last token was taken to mean (design note §4.4).
+            # Surfaced for the same reason expansions are: a rewrite the reader
+            # cannot see is a rewrite that cannot be debugged.
+            "resolved": resolved,
         },
         "total": total,
         "limit": params.limit,

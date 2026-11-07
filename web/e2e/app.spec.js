@@ -39,6 +39,9 @@ const SEARCH_BOX = "Search the corpus";
 const AMAZON_TITLE = "More on Amazon";
 // The 2018 range as a link: the same URL a reader would share, used three ways.
 const RANGE_2018 = "/?from=2018-01-01&to=2018-12-31";
+// The zero-result state. Asserted absent where a word is unfinished, present
+// where the archive really has nothing.
+const NO_MATCHES = /No passages match/;
 
 test.describe("landing screen (nothing asked yet)", () => {
   test("offers the years and kinds the archive actually has", async ({
@@ -156,7 +159,84 @@ test.describe("searching", () => {
 
   test("an unmatched query keeps the archive calm", async ({ page }) => {
     await page.goto("/?q=zzzznotinthearchive");
-    await expect(page.getByText(/No passages match/)).toBeVisible();
+    await expect(page.getByText(NO_MATCHES)).toBeVisible();
+  });
+});
+
+test.describe("type-ahead (typing is the whole interaction)", () => {
+  // `aggregation` is in the fixture's article body and, being stemmed to
+  // `aggreg` at index time, is exactly the word a prefix cannot reach without the
+  // resolver. Eight of its eleven characters, so it is unambiguously mid-word.
+  const HALF_TYPED = "aggregat";
+
+  test("results arrive before the word is finished", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("searchbox", { name: SEARCH_BOX }).fill(HALF_TYPED);
+
+    // No Enter, no click: filling the box is the entire interaction.
+    await expect(page.locator(card)).toHaveCount(1);
+    await expect(page).toHaveURL(/q=aggregat/);
+    // The rewrite is visible, so a half-word that resolved to something
+    // unexpected is debuggable rather than mysterious.
+    await expect(page.getByText(/aggregation/).first()).toBeVisible();
+    // Claim 3: what is on screen corresponds to the text in the box. The URL
+    // mirror must not overwrite the box mid-word.
+    await expect(page.getByRole("searchbox", { name: SEARCH_BOX })).toHaveValue(
+      HALF_TYPED,
+    );
+  });
+
+  test("a half-typed word never claims the archive has nothing", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const box = page.getByRole("searchbox", { name: SEARCH_BOX });
+    // One character at a time, so the page passes through every intermediate
+    // state a reader would see — including the ones below the two-character floor.
+    for (const prefix of ["a", "ag", "agg", "aggr", "aggreg", HALF_TYPED]) {
+      await box.fill(prefix);
+      await expect(
+        page.getByText(NO_MATCHES),
+        `"${prefix}" is mid-word, so claiming no matches would be false`,
+      ).toHaveCount(0);
+    }
+    await expect(page.locator(card)).toHaveCount(1);
+  });
+
+  test("one character has not started yet", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("searchbox", { name: SEARCH_BOX }).fill("a");
+    // The landing screen, not a result set and not a zero: nothing has been asked.
+    await expect(page.getByText(/2 searchable articles/)).toBeVisible();
+    await expect(page.locator(card)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("clearing the box falls back to the landing screen", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const box = page.getByRole("searchbox", { name: SEARCH_BOX });
+    await box.fill(HALF_TYPED);
+    await expect(page.locator(card)).toHaveCount(1);
+
+    await box.fill("");
+    await expect(page.getByText(/2 searchable articles/)).toBeVisible();
+    await expect(page.locator(card)).toHaveCount(0);
+    // Nothing was asked, so the URL is empty again rather than carrying `q=`.
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("punctuation mid-word is not an error state", async ({ page }) => {
+    await page.goto("/");
+    const box = page.getByRole("searchbox", { name: SEARCH_BOX });
+    for (const typed of ['agg"', "aggregat*", "agg-r", "don't", "OR", "(agg"]) {
+      await box.fill(typed);
+      await expect(
+        page.getByText(/Something went wrong|request failed/),
+        `"${typed}" rendered an error state`,
+      ).toHaveCount(0);
+    }
   });
 });
 

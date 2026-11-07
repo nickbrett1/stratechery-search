@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -163,7 +164,12 @@ def test_browsing_a_period_lists_its_articles_newest_first(service):
     status, body = get(f"{service}/search?from=2016-01-01&group=article")
     assert status == 200
     assert body["browse"] is True
-    assert body["query"] == {"raw": "", "rewritten": "", "expansions": []}
+    assert body["query"] == {
+        "raw": "",
+        "rewritten": "",
+        "expansions": [],
+        "resolved": [],
+    }
     assert body["article_total"] == 2
     # The transaction mail is in 2024, so it is never in a browsed page.
     assert [result["message_id"] for result in body["results"]] == [152, 85344]
@@ -251,6 +257,78 @@ def test_bad_parameters_are_400(service, query):
     assert set(body) == {"error"}
     assert body["error"]["code"] == "bad_request"
     assert body["error"]["message"]
+
+
+def test_a_half_typed_word_finds_nothing_without_partial(service):
+    # The measurement the whole feature rests on: `aggregation` indexes as
+    # `aggreg` (Porter), so a reader who has typed eight of its eleven characters
+    # is asking for a term longer than the only one stored, and gets nothing.
+    status, body = get(f"{service}/search?q=aggregat")
+    assert status == 200
+    assert body["total"] == 0
+    assert body["query"]["rewritten"] == '"aggregat"'
+    assert body["query"]["resolved"] == []
+
+
+def test_partial_makes_a_half_typed_word_find_the_word_it_is_becoming(service):
+    status, body = get(f"{service}/search?q=aggregat&partial=1")
+    assert status == 200
+    assert body["total"] == 3
+    # The spelling of "quoted token, prefixed" is an FTS5 grammar question, so it
+    # is pinned here rather than assumed: the wrong form fails as a syntax error.
+    assert body["query"]["rewritten"] == '("aggregat"* OR "aggregation")'
+    # The rewrite is visible, for the same reason expansions are.
+    assert body["query"]["resolved"] == ["aggregation"]
+
+
+def test_only_the_unfinished_token_is_prefixed_and_expanded(service):
+    # Completed words keep their meaning; prefixing them would widen the result
+    # set and flatten the ranking for no reader benefit (§4.2).
+    status, body = get(f"{service}/search?q=aggregation+integr&partial=1")
+    assert status == 200
+    assert (
+        body["query"]["rewritten"] == '"aggregation" AND ("integr"* OR "integration")'
+    )
+    assert body["query"]["resolved"] == ["integration"]
+
+
+def test_one_character_is_not_a_prefix(service):
+    # A single character matches a large share of the vocabulary and ranks
+    # arbitrarily: below the floor the token is quoted as ordinary search does.
+    status, body = get(f"{service}/search?q=a&partial=1")
+    assert status == 200
+    assert body["query"]["rewritten"] == '"a"'
+    assert body["query"]["resolved"] == []
+
+
+def test_partial_works_on_the_grouped_path_the_ui_asks_for(service):
+    # The browser sends group=article, which ranks articles rather than passages;
+    # the expression is the same one, so the fold must not lose the match.
+    status, body = get(f"{service}/search?q=aggregat&partial=1&group=article")
+    assert status == 200
+    assert body["article_total"] == 1
+    assert body["total"] == 3
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ['agg"', "aggregat*", "agg-r", "don't", "OR", "(agg", "aggregat ", "-agg", ":"],
+)
+def test_partial_never_becomes_fts_syntax(service, raw):
+    # Claim 5: no keystroke produces an error state. A query with no words in it
+    # is a 400 by contract — the UI's job is not to send it — but FTS5 syntax
+    # must never escape, which would be a 500 rather than a refusal.
+    status, body = get(f"{service}/search?partial=1&q={urllib.parse.quote(raw)}")
+    assert status in {200, 400}
+    if status == 400:
+        assert body["error"]["code"] == "bad_request"
+        assert "no searchable words" in body["error"]["message"]
+
+
+def test_partial_must_be_a_boolean(service):
+    status, body = get(f"{service}/search?q=the&partial=maybe")
+    assert status == 400
+    assert body["error"]["code"] == "bad_request"
 
 
 def test_punctuation_never_becomes_fts_syntax(service):

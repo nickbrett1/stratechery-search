@@ -36,6 +36,10 @@ export function searchQuery(state) {
   // The reader is looking for articles, not for the same 2018 update four times
   // because it happens to be chunked; `limit` and `offset` then count articles.
   params.set("group", "article");
+  // Type-ahead only: the last token is half-typed, so it is matched by prefix
+  // instead of as a whole word. Additive and off by default — the MCP adapter and
+  // a bookmarked URL keep meaning "a complete question" (design note §7).
+  if (state.partial) params.set("partial", "1");
   return params.toString();
 }
 

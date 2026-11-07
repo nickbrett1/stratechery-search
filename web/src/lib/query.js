@@ -11,6 +11,10 @@ const DEFAULTS = {
   hasImages: "",
   limit: 20,
   offset: 0,
+  // Not URL state: `partial` describes *how* this request was made (the reader is
+  // still typing), not *what* was asked. A reload of `?q=aggregat` is an ordinary
+  // search for a word that happens to be unfinished, and must stay one.
+  partial: false,
 };
 
 function readSearchParams(search) {

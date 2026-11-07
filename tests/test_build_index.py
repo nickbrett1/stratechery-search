@@ -167,6 +167,45 @@ def test_fts_is_rebuilt_and_resolves_content(built):
         conn.close()
 
 
+def test_the_unstemmed_shadow_and_its_resolver_are_rebuilt(built):
+    out, _ = built
+    conn = sqlite3.connect(out)
+    try:
+        chunks = conn.execute("SELECT count(*) FROM chunks").fetchone()[0]
+        # Same silent-empty failure mode as chunks_fts: a second external-content
+        # table nobody rebuilt is schema-clean and matches nothing.
+        assert conn.execute("SELECT count(*) FROM chunks_fts_ta").fetchone()[0] == chunks
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM chunks_fts_ta WHERE chunks_fts_ta MATCH 'aggregation'"
+            ).fetchone()[0]
+            >= 1
+        )
+        # The resolver exists for the prefix Porter cannot answer: the porter
+        # index holds `aggreg`, so only the unstemmed vocabulary has `aggregation`
+        # to resolve `aggregat` to.
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?",
+                ('"aggregat"*',),
+            ).fetchone()[0]
+            == 0
+        )
+        resolved = conn.execute(
+            "SELECT term FROM terms WHERE term >= 'aggregat' AND term < 'aggregat' || ?"
+            " ORDER BY doc DESC",
+            ("\U0010ffff",),
+        ).fetchall()
+        assert [row[0] for row in resolved] == ["aggregation"]
+        # `doc` is a document frequency, not a term count: the word appears in
+        # every chunk of the article, and the vocabulary must say how many
+        # *documents*, since that is what orders the candidates.
+        doc = conn.execute("SELECT doc FROM terms WHERE term = 'aggregation'").fetchone()[0]
+        assert 1 <= doc <= chunks
+    finally:
+        conn.close()
+
+
 def test_url_only_image_is_null_not_missing(built):
     out, _ = built
     conn = sqlite3.connect(out)
@@ -187,6 +226,7 @@ def test_every_gate_passes_on_the_synthetic_corpus(built):
     codes = {gate["gate"] for gate in report["gates"]}
     assert {
         "fts_parity_and_control",
+        "typeahead_shadow_and_resolver",
         "fts_content_resolution",
         "subject_denormalised",
         "provenance",

@@ -50,6 +50,11 @@ EXPECTED = {
 
 CONTROL_QUERY_TERM = "the"
 
+#: A prefix Porter cannot answer: ``aggregation`` indexes as ``aggreg``, so the
+#: stemmed index has no term starting ``aggregat``. If the resolver cannot find
+#: one either, the feature is dead and nothing says so.
+TA_PREFIX_CHECK = "aggregat"
+
 SCHEMA = """
 CREATE TABLE articles (
   message_id INTEGER PRIMARY KEY,
@@ -84,6 +89,32 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
   content='chunks', content_rowid='id',
   tokenize="porter unicode61 remove_diacritics 2",
   prefix='2 3'
+);
+
+-- The unstemmed shadow of chunks_fts, and the reason type-ahead exists at all.
+--
+-- A half-typed word cannot be prefixed against a Porter index: `aggregation`
+-- indexes as `aggreg`, so `"aggregat"*` asks for a term that begins with eight
+-- characters when the longest term there is six, and matches nothing. Measured
+-- on the live index: `aggregat*` 0 hits, `integra*` 0, `aggr*` 2253. Of the
+-- 4,754 stems with 20+ documents, 4,478 die on the next character typed.
+--
+-- This table stores the same chunks tokenised without stemming, so an unfinished
+-- word is just a word again. It is never ranked against — see `terms` below.
+CREATE VIRTUAL TABLE chunks_fts_ta USING fts5(
+  text, subject,
+  content='chunks', content_rowid='id',
+  tokenize="unicode61 remove_diacritics 2",
+  prefix='2 3 4'
+);
+
+-- The resolver's lookup table: every unstemmed term in the corpus and how many
+-- documents hold it, so a prefix can be answered by an index range scan instead
+-- of by ranking a second index. `chunks_fts_ta` is the vocabulary's source and
+-- audit trail; this is the query-time acceleration of it.
+CREATE TABLE terms (
+  term TEXT PRIMARY KEY,
+  doc INTEGER NOT NULL
 );
 
 CREATE TABLE article_images (
@@ -254,8 +285,23 @@ def build(
             chunk_rows,
         )
 
-        # Step 4 — the required external-content rebuild.
+        # Step 4 — the required external-content rebuild. Both tables read the
+        # same `chunks` rows; neither indexes itself.
         conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO chunks_fts_ta(chunks_fts_ta) VALUES('rebuild')")
+        # Step 4b — freeze the unstemmed vocabulary for the resolver. fts5vocab is
+        # a read-only view over the index built a line ago; `doc` is the document
+        # frequency, which is what orders the candidates for a half-typed token.
+        # The table-valued-function spelling (`fts5vocab('t','row')`) is not in
+        # every SQLite build; the virtual-table form is.
+        conn.execute(
+            "CREATE VIRTUAL TABLE temp.vocab USING"
+            " fts5vocab(main, 'chunks_fts_ta', 'row')"
+        )
+        conn.execute(
+            "INSERT INTO terms (term, doc) SELECT term, doc FROM temp.vocab WHERE doc > 0"
+        )
+        conn.execute("DROP TABLE temp.vocab")
 
         # Step 5 — images, `asset` nullable on purpose.
         image_rows = []
@@ -535,6 +581,49 @@ def _evaluate(
             {"fts_rows": fts_count, "control_hits": control},
             fts_count == chunk_count and control >= 1,
             note="parity alone passes on an empty index; the control query is the real gate",
+        )
+    )
+
+    # The type-ahead shadow has exactly the silent-empty failure mode the gate
+    # above was written for: a second external-content table nobody rebuilt is
+    # schema-clean and returns nothing. Parity plus a control, for the same reason.
+    ta_count = cur.execute("SELECT count(*) FROM chunks_fts_ta").fetchone()[0]
+    ta_control = cur.execute(
+        "SELECT count(*) FROM chunks_fts_ta WHERE chunks_fts_ta MATCH ?",
+        (CONTROL_QUERY_TERM,),
+    ).fetchone()[0]
+    # The resolver's *point* is a prefix that Porter cannot answer, so the gate
+    # asks a question the porter index fails: `aggregat` is a real prefix of a
+    # real word in this corpus (aggregation/aggregate), and stemming it to
+    # `aggreg` makes it unfindable. If the resolve returns nothing, the feature
+    # would degrade to "same as before" for every word — silently.
+    terms_count = cur.execute("SELECT count(*) FROM terms").fetchone()[0]
+    resolves = [
+        row[0]
+        for row in cur.execute(
+            "SELECT term FROM terms WHERE term >= ? AND term < ?"
+            " ORDER BY doc DESC LIMIT 5",
+            (TA_PREFIX_CHECK, TA_PREFIX_CHECK + "\U0010ffff"),
+        ).fetchall()
+    ]
+    gates.append(
+        _gate(
+            "typeahead_shadow_and_resolver",
+            {
+                "parity": chunk_count,
+                "control_min": 1,
+                "terms_min": 1,
+                "resolves": TA_PREFIX_CHECK,
+            },
+            {
+                "shadow_rows": ta_count,
+                "control_hits": ta_control,
+                "terms": terms_count,
+                "resolved": resolves,
+            },
+            ta_count == chunk_count and ta_control >= 1 and bool(resolves),
+            note="a shadow table that was never rebuilt is empty and silent; "
+            "the prefix control is the real gate",
         )
     )
 
