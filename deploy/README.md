@@ -4,6 +4,25 @@
 
 # network mode=bridge, watchtower=true, homepage=true)
 
+## 0. Where this actually runs — ryzen, not the NAS
+
+The sections below are genproj boilerplate and talk about "the NAS (Synology
+Container Manager)" throughout. **That is not where this service runs, and never
+has been.** Correcting it once here rather than in nine places:
+
+| | |
+|---|---|
+| host | `ryzen` (UM790 Pro, `100.127.135.108`), compose project at `/srv/docker/stratechery-search` |
+| index | `/srv/docker/stratechery-search/data/index/search.sqlite` on ryzen's NVMe |
+| archive | `/srv/datasets/stratechery-archive` on ryzen's NVMe |
+| ingress | `tailscale serve --https=443` → `127.0.0.1:8091`, certificate for `ryzen.tail86fd19.ts.net` |
+| the NAS | holds nothing for this project (verified 2026-11-07: no container, no directory under either docker root) |
+
+The NAS appears in this runbook only because genproj generates a Synology-shaped
+one for every `docker-container` project. `docker compose up -d` on ryzen is the
+whole deployment stay; sections 2 and 3 describe a path this project does not
+use.
+
 ## 1. Build & publish the image
 
 The repository's Buildkite pipeline (`.buildkite/pipeline.yml`) contains a
