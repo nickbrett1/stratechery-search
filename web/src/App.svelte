@@ -1,8 +1,11 @@
 <script>
   import { readState, writeState } from "./lib/query.js";
   import ArticlePage from "./components/ArticlePage.svelte";
+  // TEMPORARY: latency instrument for the type-ahead gate (?perf=1).
+  import PerfHud from "./components/PerfHud.svelte";
   import SearchPage from "./components/SearchPage.svelte";
   import StatsPage from "./components/StatsPage.svelte";
+  import { perf } from "./lib/perf.svelte.js";
 
   // Flat client-side routing over the querystring (§4). No adapter, no SSR:
   // Python serves dist/ and the URL is the state, which is why a result set is
@@ -189,6 +192,12 @@
     <SearchPage query={state} onchange={updateState} />
   {/if}
 </main>
+
+<!-- TEMPORARY: the type-ahead latency readout, mounted only when the app was
+     loaded with `?perf=1`. Delete with lib/perf.svelte.js. -->
+{#if perf.enabled}
+  <PerfHud />
+{/if}
 
 <style>
   .top {

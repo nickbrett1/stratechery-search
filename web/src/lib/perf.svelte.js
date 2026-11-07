@@ -1,0 +1,102 @@
+// TEMPORARY. The instrument for the type-ahead latency gate (design note §7:
+// perceived latency under ~150 ms p95, measured on the phone, over the tailnet).
+// Remove with the flag: delete this file, the two `perf.note…` calls in api.js
+// and SearchPage.svelte, and the <PerfHud /> block in App.svelte.
+//
+// Enabled by loading any page with `?perf=1`, which is remembered in
+// sessionStorage because the URL is rewritten on every keystroke and would
+// otherwise drop the flag on the first one. `?perf=0` turns it off again.
+//
+// What it measures is *perceived* latency: from the last keystroke of the word
+// to the first frame that paints the result. That is the number the gate is
+// about, so it includes the 120 ms debounce rather than starting at the fetch.
+
+const STORAGE_KEY = "stratechery.perf";
+
+function readEnabled() {
+  try {
+    const value = new URLSearchParams(window.location.search).get("perf");
+    if (value !== null) {
+      const on = value !== "0";
+      sessionStorage.setItem(STORAGE_KEY, on ? "1" : "0");
+      return on;
+    }
+    return sessionStorage.getItem(STORAGE_KEY) === "1";
+  } catch {
+    // Private mode with storage denied: the flag still works for this page,
+    // it just will not survive the first URL rewrite.
+    return new URLSearchParams(window.location.search).has("perf");
+  }
+}
+
+// A phone on cellular and a phone on wi-fi are different products; record which
+// one produced the numbers, when the browser will say (Chrome, not Safari).
+function connectionLabel() {
+  const conn = navigator.connection;
+  if (!conn) return "unknown";
+  const down = conn.downlink ? `${conn.downlink}Mb/s` : "";
+  return [conn.effectiveType, down].filter(Boolean).join(" ") || "unknown";
+}
+
+export const perf = $state({
+  enabled: readEnabled(),
+  samples: [],
+  zero: 0,
+  conn: connectionLabel(),
+});
+
+// The sample currently being assembled. Module scope, not state: it is written
+// by three call sites in two components and read by none.
+let keyAt = 0;
+let keyTerm = "";
+let fetchAt = 0;
+
+export function noteKey(term) {
+  if (!perf.enabled) return;
+  keyAt = performance.now();
+  keyTerm = term;
+  fetchAt = 0;
+}
+
+export function noteFetchStart(at) {
+  if (!perf.enabled) return;
+  fetchAt = at;
+}
+
+// Called from a requestAnimationFrame after the response has been rendered, so
+// `now` is after a frame that had the cards in it.
+export function notePaint(body, partial) {
+  if (!perf.enabled || !keyAt) return;
+  const paintAt = performance.now();
+  const query = body.query || {};
+  const sample = {
+    q: query.raw ?? keyTerm,
+    partial: Boolean(partial),
+    total: body.total ?? 0,
+    keyToPaint: Math.round(paintAt - keyAt),
+    debounce: fetchAt ? Math.round(fetchAt - keyAt) : null,
+    network: fetchAt ? Math.round(paintAt - fetchAt) : null,
+    server: typeof body.took_ms === "number" ? body.took_ms : null,
+    resolved: (query.resolved || []).length,
+    at: new Date().toISOString(),
+  };
+  keyAt = 0; // one sample per keystroke→paint pair
+  if (sample.partial && sample.total === 0) perf.zero += 1;
+  perf.samples = [...perf.samples, sample].slice(-300);
+}
+
+export function percentile(values, fraction) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.ceil(fraction * sorted.length) - 1,
+  );
+  return sorted[Math.max(0, index)];
+}
+
+export function clearSamples() {
+  perf.samples = [];
+  perf.zero = 0;
+  keyAt = 0;
+}

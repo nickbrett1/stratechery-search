@@ -26,6 +26,18 @@ export default [
     },
   },
   {
+    // Svelte 5 runes in plain `.svelte.js` modules (lib/perf.svelte.js uses
+    // $state). The compiler handles them; ESLint only needs to know they exist.
+    files: ["**/*.svelte.js"],
+    languageOptions: {
+      globals: {
+        $state: "readonly",
+        $derived: "readonly",
+        $effect: "readonly",
+      },
+    },
+  },
+  {
     files: ["**/*.test.js", "**/*.spec.js", "**/test-setup.js"],
     languageOptions: {
       globals: {

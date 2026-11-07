@@ -240,6 +240,36 @@ test.describe("type-ahead (typing is the whole interaction)", () => {
   });
 });
 
+test.describe("latency instrument (temporary, ?perf=1)", () => {
+  const HUD = '[aria-label="type-ahead latency"]';
+
+  test("is absent unless asked for", async ({ page }) => {
+    await page.goto("/?q=installed");
+    await expect(page.locator(card)).toHaveCount(1);
+    // The instrument is a tool, not a feature: nobody who did not ask for it
+    // should ever see it, and a flag that leaked into every page would be a bug
+    // in the page, not in the tool.
+    await expect(page.locator(HUD)).toHaveCount(0);
+  });
+
+  test("records a keystroke→paint sample, and survives the URL rewrite", async ({
+    page,
+  }) => {
+    await page.goto("/?perf=1");
+    await expect(page.locator(HUD)).toBeVisible();
+    await page.getByRole("searchbox", { name: SEARCH_BOX }).fill("aggregat");
+    await expect(page.locator(card)).toHaveCount(1);
+    // Typing rewrites the querystring, which would drop `perf=1` if the flag
+    // were read from the URL on every render: it is remembered instead.
+    await expect(page).not.toHaveURL(/perf=1/);
+    await expect(page.locator(HUD)).toBeVisible();
+    // A number, not a placeholder: the instrument failing to sample would look
+    // exactly like a page that was never instrumented.
+    const reading = await page.locator(`${HUD} .big`).textContent();
+    expect(Number.parseInt(reading, 10)).toBeGreaterThan(0);
+  });
+});
+
 test.describe("drill-in", () => {
   test("the excerpt is clickable, not only the title", async ({ page }) => {
     await page.goto("/?q=installed+base");

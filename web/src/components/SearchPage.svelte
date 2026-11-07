@@ -1,5 +1,7 @@
 <script>
   import { search } from "../lib/api.js";
+  // TEMPORARY: the type-ahead latency instrument (lib/perf.svelte.js).
+  import { noteKey, notePaint } from "../lib/perf.svelte.js";
   import { remember } from "../lib/recent.js";
   import Facets from "./Facets.svelte";
   import ResultCard from "./ResultCard.svelte";
@@ -67,7 +69,10 @@
     error = null;
     search(query)
       .then((body) => {
-        if (!cancelled) response = body;
+        if (!cancelled) {
+          response = body;
+          askedPartial = Boolean(query.partial);
+        }
       })
       .catch((failure) => {
         if (!cancelled) {
@@ -83,8 +88,20 @@
     };
   });
 
+  // TEMPORARY: the paint half of the latency sample. Effects run after the DOM
+  // update, so the frame requested here is one that has the cards in it.
+  let askedPartial = false;
+  $effect(() => {
+    const body = response;
+    if (!body) return;
+    requestAnimationFrame(() => notePaint(body, askedPartial));
+  });
+
   function submit(event) {
     event.preventDefault();
+    // TEMPORARY: Enter is a keystroke too — it starts a normal (non-partial)
+    // request, and the same instrument records how long that takes.
+    noteKey(typed.trim());
     // A keystroke still in the debounce must not fire after Enter: the reader has
     // said this is the question, so the pending refinement is dropped.
     clearTimeout(pending);
@@ -101,6 +118,9 @@
 
   function typeahead(event) {
     typed = event.currentTarget.value;
+    // TEMPORARY: the keystroke half of the latency sample. Recorded before the
+    // debounce so the number includes the wait the reader actually experiences.
+    noteKey(typed.trim());
     clearTimeout(pending);
     const term = typed.trim();
 
