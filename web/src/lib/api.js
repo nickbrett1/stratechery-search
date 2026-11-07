@@ -4,6 +4,8 @@
 import { noteFetchStart } from "./perf.svelte.js";
 
 const JSON_HEADERS = { Accept: "application/json" };
+// Cards per response while typing. See the note in searchQuery().
+const TYPEAHEAD_LIMIT = 10;
 
 async function getJson(path, params) {
   const url = params ? `${path}?${params.toString()}` : path;
@@ -36,7 +38,14 @@ export function searchQuery(state) {
   if (state.hasImages === "true" || state.hasImages === "false") {
     params.set("has_images", state.hasImages);
   }
-  if (state.limit) params.set("limit", String(state.limit));
+  // Ten cards while the reader is still typing, not twenty: half the payload is
+  // half the wait on a phone (11.7 KB → 6.9 KB gzipped, measured 2026-11-07), and
+  // a half-typed word rarely has twenty results worth reading. Enter asks for
+  // the page size again.
+  const limit = state.partial
+    ? Math.min(state.limit || 20, TYPEAHEAD_LIMIT)
+    : state.limit;
+  if (limit) params.set("limit", String(limit));
   if (state.offset) params.set("offset", String(state.offset));
   // One row per article, its other matching passages folded under the best one.
   // The reader is looking for articles, not for the same 2018 update four times

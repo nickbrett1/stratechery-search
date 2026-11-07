@@ -219,10 +219,15 @@ def fts_query(raw: str) -> str:
     return " ".join(f'"{word}"' for word in words)
 
 
-#: A reader typing one character is not asking a question yet: a 1-character
-#: prefix matches a large slice of the vocabulary and ranks arbitrarily. Two is
-#: the floor, and below it the UI has not started rather than showing zero.
-MIN_PREFIX_CHARS = 2
+#: A reader typing is not asking a question yet, and the floor is three, not two.
+#: A 2-character prefix was measured on a phone (2026-11-07) at **211–218 ms of
+#: server time** and 20 KB gzipped — `co` alone touches 29,274 chunks and ORs 20
+#: resolved terms — against 12–75 ms for everything else. That is clause 4 of the
+#: type-ahead gate ("took_ms on a 2-char prefix is not pathological; if it is
+#: slow, raise the min length to 3 and say so"), and it was slow. The cost is
+#: that `co` finds nothing until it is `com`; the three-character floor is
+#: quoted in ordinary search either way.
+MIN_PREFIX_CHARS = 3
 
 #: How many unstemmed terms a half-typed token may expand to. The group is ORed
 #: into the porter index, so this is also the width of the ranking done per
@@ -311,16 +316,16 @@ def partial_expression(
         head_expression, expansions = "", []
 
     if len(tail) < MIN_PREFIX_CHARS:
-        # A single character is not yet a word, and both obvious readings of it
-        # are wrong. Prefixing it is unaffordable — the index's `prefix='2 3 4'`
-        # cannot serve one character, so it degenerates to a scan — and quoting it
-        # whole searches for the literal letter, which is what made typing
-        # "smiling c" on the way to "smiling curve" return **0** and read as "the
-        # archive has nothing" (measured on a phone, 2026-11-07: the one
-        # zero-flicker the gate recorded). So it does not constrain anything yet:
-        # the answer is the one the completed words already gave, which is what
-        # was on screen a keystroke ago. A query that is *only* this letter has
-        # nothing to fall back to, so it is searched as the word it is.
+        # Below the floor, the unfinished word constrains nothing yet. Both
+        # obvious readings of it are wrong: prefixing is unaffordable (a
+        # 2-character prefix cost 211–218 ms of server time and 20 KB gzipped on
+        # a phone, 2026-11-07), and quoting it whole searches for a word that has
+        # not been finished — which is what made typing "smiling c" on the way to
+        # "smiling curve" return **0** and read as "the archive has nothing", the
+        # one zero-flicker the gate recorded. So the answer is the one the
+        # completed words already gave, which is what was on screen a keystroke
+        # ago. A query that is *only* this fragment has nothing to fall back to,
+        # so it is searched as the word it is.
         if not head_expression:
             return f'"{tail}"', expansions, []
         return head_expression, expansions, []

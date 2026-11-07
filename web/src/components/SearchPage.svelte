@@ -19,20 +19,36 @@
   // and resetting it from the URL would move the caret to the end mid-word.
   let sent = $state(query.q);
 
-  // A reader typing is not asking a question yet. Below two characters the
-  // vocabulary is too broad to be a result set, and a mid-word zero-result state
-  // is a *false claim* ("this corpus has nothing for you") rather than an honest
-  // "I don't know yet" (design note §2.3, §3.3). The floor is the UI's: the API's
-  // own 400 for an empty q is correct and is never sent.
-  const MIN_PREFIX_CHARS = 2;
-  // 120 ms buys network quiet, not CPU: the query is ~1 ms, the tailnet hop is
-  // not, and a phone cannot make eight round trips in 150 ms (design note §3.1).
-  const TYPEAHEAD_DEBOUNCE_MS = 120;
+  // A reader typing is not asking a question yet. Below three characters the
+  // vocabulary is too broad to be a result set *and* too expensive to answer —
+  // a 2-character prefix measured at 211–218 ms of server time and 20 KB gzipped
+  // on a phone, against 12–75 ms for everything else — and a mid-word
+  // zero-result state is a *false claim* ("this corpus has nothing for you")
+  // rather than an honest "I don't know yet" (design note §2.3, §3.3, and gate
+  // clause 4). The floor is the UI's: the API's own 400 for an empty q is
+  // correct and is never sent.
+  const MIN_PREFIX_CHARS = 3;
+  // Not a delay — a rate limit. The first version waited 120 ms for silence
+  // before asking, which charged every reader 120 ms for a decision they had
+  // already made: a pause *is* the question. Measured on a phone (2026-11-07),
+  // that wait was 121 ms of a 205 ms median — more than half the perceived
+  // latency was this timer, on a link where the whole query cost 12-38 ms.
+  //
+  // So a keystroke now goes out immediately when the last request is older than
+  // the cooldown, and only a burst *inside* it is collapsed into one trailing
+  // request. Ninety milliseconds is below the gap between two keys at phone
+  // typing speed (~150 ms), so ordinary typing asks once per keystroke exactly
+  // as before, minus the wait; a paste, an autorepeat or a very fast thumb is
+  // what the cooldown actually protects against.
+  const TYPEAHEAD_COOLDOWN_MS = 90;
   // The same word-runs the server extracts, so the UI never sends text the API
   // would refuse as "no searchable words" (`:` , an emoji, a lone `"`).
   const WORD = /[^\W_]+(?:[-'][^\W_]+)*/u;
 
   let pending = 0;
+  // When the last type-ahead request went out. The cooldown is measured from
+  // here, not from the keystroke, so a burst cannot exceed ~4 requests/second.
+  let lastSentAt = 0;
 
   // The URL is the query (§4): a parameter change is a fetch, and the input box
   // follows the URL rather than owning the truth.
@@ -138,15 +154,22 @@
     if (!WORD.test(term) || term.length < MIN_PREFIX_CHARS) return;
     if (term === sent) return;
 
-    pending = setTimeout(() => {
-      sent = term;
-      noteDispatch(true, term);
-      // `replace` keeps the back stack for places the reader chose to go.
-      onchange(
-        { ...query, q: term, offset: 0, partial: true },
-        { replace: true },
-      );
-    }, TYPEAHEAD_DEBOUNCE_MS);
+    const now = performance.now();
+    const wait = Math.max(0, lastSentAt + TYPEAHEAD_COOLDOWN_MS - now);
+    if (wait === 0) ask(term);
+    else pending = setTimeout(() => ask(typed.trim()), wait);
+  }
+
+  function ask(term) {
+    if (!term || term === sent) return;
+    lastSentAt = performance.now();
+    sent = term;
+    noteDispatch(true, term);
+    // `replace` keeps the back stack for places the reader chose to go.
+    onchange(
+      { ...query, q: term, offset: 0, partial: true },
+      { replace: true },
+    );
   }
 
   // Active filters, as removable chips. The facet panel is a mile down a phone

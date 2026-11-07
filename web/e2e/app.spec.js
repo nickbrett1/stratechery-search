@@ -232,6 +232,20 @@ test.describe("type-ahead (typing is the whole interaction)", () => {
     await expect(page).toHaveURL(/\/$/);
   });
 
+  test("the floor is three characters, not two", async ({ page }) => {
+    // A 2-character prefix cost 211-218 ms of server time and 20 KB gzipped on a
+    // phone (measured 2026-11-07) against 12-75 ms for everything else, and gate
+    // clause 4 says the answer is to raise the floor rather than to hide it.
+    await page.goto("/");
+    const box = page.getByRole("searchbox", { name: SEARCH_BOX });
+    await box.fill("ag");
+    await expect(page.getByText(/2 searchable articles/)).toBeVisible();
+    await expect(page.locator(card)).toHaveCount(0);
+
+    await box.fill("agg");
+    await expect(page.locator(card)).toHaveCount(1);
+  });
+
   test("clearing the box falls back to the landing screen", async ({
     page,
   }) => {
