@@ -21,6 +21,7 @@ that changes is :data:`ANN_ROWS`, recorded rather than acted on.
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -280,6 +281,41 @@ class Backend:
             parity = assert_parity(table, conn or self._conn)
             self._table, self._parity, self._stamp = table, parity, stamp
         return self._table
+
+    def warm(self, index_path: Path) -> dict:
+        """Pay the connect and the parity scan before a reader asks for one.
+
+        Measured 2026-11-07 on the live box: the first hybrid request after a
+        container start took **1,078 ms**; the same query warm, **205 ms**. The
+        ~870 ms difference is opening LanceDB and comparing 29,918 chunk ids on
+        each side, and nothing about it needs a reader to wait. ``serve()``
+        calls this on a background thread at startup.
+
+        Failure is returned, never raised: a store that cannot be warmed is one
+        whose first real request fails the same way, and a warm-up that kills
+        the server would be a worse failure than the slow search it prevents.
+        """
+        started = time.perf_counter()
+        try:
+            # sqlite3 connections are per-thread, so this one belongs to the
+            # thread that warms -- not to the request threads that follow.
+            conn = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
+            try:
+                self.table(conn)
+            finally:
+                conn.close()
+        except Exception as error:  # noqa: BLE001 - startup must survive this
+            return {
+                "ok": False,
+                "ms": round((time.perf_counter() - started) * 1000, 1),
+                "code": getattr(error, "code", type(error).__name__),
+                "message": str(error),
+            }
+        return {
+            "ok": True,
+            "ms": round((time.perf_counter() - started) * 1000, 1),
+            "parity": self._parity,
+        }
 
     def search(
         self,

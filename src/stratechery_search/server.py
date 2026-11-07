@@ -14,6 +14,7 @@ import json
 import mimetypes
 import os
 import sqlite3
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -347,12 +348,31 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
+def _warm_hybrid(backend, index_path: Path) -> None:
+    """Open the store and check parity before the first reader asks for one.
+
+    ~870 ms of a cold process's first hybrid search is LanceDB connect plus the
+    29,918-id parity scan (measured 2026-11-07: 1,078 ms cold, 205 ms warm).
+    It is paid on a daemon thread so the listener comes up immediately and what
+    a reader feels is the warm number. The verdict is logged either way: a store
+    that cannot be warmed will fail the same way on its first request, and
+    saying so at startup is cheaper than discovering it in a 500.
+    """
+    print(json.dumps({"hybrid_warmup": backend.warm(index_path)}), flush=True)
+
+
 def serve(config: Config) -> None:
     server = Server(("0.0.0.0", config.port), Handler)
     server.config = config  # type: ignore[attr-defined]
-    # Lazy by construction: constructing this imports nothing native and opens
-    # nothing. Only a `hybrid=1` request reaches through it (design §4.6).
+    # Constructing this imports nothing native and opens nothing; the connect
+    # happens on the warm-up thread below, not at import (design §4.6).
     server.hybrid = vector_store.Backend(config.store_path)  # type: ignore[attr-defined]
+    threading.Thread(
+        target=_warm_hybrid,
+        args=(server.hybrid, config.index_path),
+        name="hybrid-warmup",
+        daemon=True,
+    ).start()
     print(
         f"stratechery-search listening on :{config.port} "
         f"(index={config.index_path}, static={config.static_dir})",

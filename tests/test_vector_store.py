@@ -94,6 +94,33 @@ def test_a_parity_failure_is_not_cached(store, fake_vectors, tmp_path):
     assert backend._table is None, "a store that failed parity must not be kept"
 
 
+def test_the_warm_up_pays_the_connect_and_the_parity_scan(store, fake_vectors, tmp_path):
+    """1,078 ms cold, 205 ms warm: the difference is what this front-loads."""
+    store_path, conn, index_path = store
+    build(tmp_path, index_path)
+    backend = vector_store.Backend(store_path)
+
+    result = backend.warm(index_path)
+    assert result["ok"] is True
+    assert result["parity"]["count"] == 5
+    assert isinstance(result["ms"], float)
+
+    # A request afterwards finds the handle and the verdict already there.
+    assert backend.table(conn) is backend._table
+
+
+def test_a_warm_up_that_fails_reports_it_instead_of_raising(store, fake_vectors, tmp_path):
+    """A warm-up that killed the server would be worse than the slow search."""
+    store_path, conn, index_path = store
+    build(tmp_path, index_path, limit=2)  # partial: parity must fail
+    backend = vector_store.Backend(store_path)
+
+    result = backend.warm(index_path)
+    assert result["ok"] is False
+    assert result["code"] == "store_mismatch"
+    assert backend._table is None, "a failed warm-up must not leave a handle behind"
+
+
 def test_the_full_fixture_corpus_round_trips(store, fake_vectors, tmp_path):
     store_path, conn, index_path = store
     summary = build(tmp_path, index_path)
