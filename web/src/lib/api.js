@@ -1,19 +1,13 @@
 // Thin client for the frozen §3 contract. No state, no cache: the URL is the
 // state, and a reload must produce the same request the reader sees.
 
-import { noteFetchStart } from "./perf.svelte.js";
-
 const JSON_HEADERS = { Accept: "application/json" };
 // Cards per response while typing. See the note in searchQuery().
 const TYPEAHEAD_LIMIT = 10;
 
 async function getJson(path, params) {
   const url = params ? `${path}?${params.toString()}` : path;
-  // TEMPORARY: the start of the network leg of the type-ahead latency sample
-  // (see lib/perf.svelte.js).
-  const started = performance.now();
   const response = await fetch(url, { headers: JSON_HEADERS });
-  if (path === "/search") noteFetchStart(started);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = body.error || {};
