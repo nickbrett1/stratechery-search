@@ -48,7 +48,7 @@ services:
       # Re-check this number when a tile starting T–Z joins Data & Markets.
       - "homepage.weight=1100"
       - "homepage.icon=mdi-text-search"
-      - "homepage.href=http://ryzen.tail86fd19.ts.net/"
+      - "homepage.href=https://ryzen.tail86fd19.ts.net/"
       - "homepage.description=full-text search over 1,691 Stratechery articles, 2016 to now"
       - "homepage.widget.type=customapi"
       - "homepage.widget.url=http://127.0.0.1:8091/stats"
