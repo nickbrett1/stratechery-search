@@ -291,6 +291,9 @@ def partial_expression(
     Expansions are computed over the completed tokens only (design note §4.5): an
     unfinished word is not a word, and expanding it would make the result set jump
     between one keystroke and the next.
+
+    A one-character tail constrains nothing (see below): the results are those of
+    the completed words, so the reader never sees a mid-word zero.
     """
     words = _WORD_RE.findall(raw)
     if not words:
@@ -308,9 +311,19 @@ def partial_expression(
         head_expression, expansions = "", []
 
     if len(tail) < MIN_PREFIX_CHARS:
-        # Too short to prefix, but still a token the reader is typing: quote it
-        # whole, which is exactly what ordinary search does.
-        return _join(head_expression, f'"{tail}"'), expansions, []
+        # A single character is not yet a word, and both obvious readings of it
+        # are wrong. Prefixing it is unaffordable — the index's `prefix='2 3 4'`
+        # cannot serve one character, so it degenerates to a scan — and quoting it
+        # whole searches for the literal letter, which is what made typing
+        # "smiling c" on the way to "smiling curve" return **0** and read as "the
+        # archive has nothing" (measured on a phone, 2026-11-07: the one
+        # zero-flicker the gate recorded). So it does not constrain anything yet:
+        # the answer is the one the completed words already gave, which is what
+        # was on screen a keystroke ago. A query that is *only* this letter has
+        # nothing to fall back to, so it is searched as the word it is.
+        if not head_expression:
+            return f'"{tail}"', expansions, []
+        return head_expression, expansions, []
 
     resolved = resolve_prefix(conn, tail)
     alternatives = [f'"{tail}"*']

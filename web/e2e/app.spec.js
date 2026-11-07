@@ -203,10 +203,30 @@ test.describe("type-ahead (typing is the whole interaction)", () => {
     await expect(page.locator(card)).toHaveCount(1);
   });
 
+  test("the first letter of a second word does not empty the page", async ({
+    page,
+  }) => {
+    // Measured on a phone: typing "smiling curve" as a slow reader rendered
+    // "No passages match" for one keystroke at "smiling c", because a
+    // one-character word was searched as the letter it is. A started word that
+    // is not finished must not constrain the query yet.
+    await page.goto("/");
+    const box = page.getByRole("searchbox", { name: SEARCH_BOX });
+    await box.fill("aggregation");
+    await expect(page.locator(card)).toHaveCount(1);
+
+    await box.fill("aggregation t");
+    await expect(page.getByText(NO_MATCHES)).toHaveCount(0);
+    // The same result set as the completed word alone: nothing new appeared, and
+    // nothing disappeared.
+    await expect(page.locator(card)).toHaveCount(1);
+  });
+
   test("one character has not started yet", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("searchbox", { name: SEARCH_BOX }).fill("a");
     // The landing screen, not a result set and not a zero: nothing has been asked.
+    await expect(page.getByText(/2 searchable articles/)).toBeVisible();
     await expect(page.getByText(/2 searchable articles/)).toBeVisible();
     await expect(page.locator(card)).toHaveCount(0);
     await expect(page).toHaveURL(/\/$/);

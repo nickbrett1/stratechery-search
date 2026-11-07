@@ -7,6 +7,7 @@ and the service has no write path. A shape change here is a contract change.
 
 from __future__ import annotations
 
+import gzip
 import json
 import sqlite3
 import urllib.error
@@ -303,6 +304,20 @@ def test_one_character_is_not_a_prefix(service):
     assert status == 200
     assert body["query"]["rewritten"] == '"a"'
     assert body["query"]["resolved"] == []
+
+
+def test_a_one_character_word_does_not_empty_the_page(service):
+    # Measured on a phone, 2026-11-07: typing "smiling c" on the way to "smiling
+    # curve" rendered "No passages match" for one keystroke, because a
+    # one-character tail was quoted whole (`"smiling" AND "c"`) and matched
+    # nothing. A word that has been started but not finished must not constrain
+    # the query yet — the answer stays the one the completed words gave.
+    _, whole = get(f"{service}/search?q=aggregation")
+    status, body = get(f"{service}/search?q=aggregation+t&partial=1")
+    assert status == 200
+    assert body["query"]["rewritten"] == '"aggregation"'
+    assert body["query"]["resolved"] == []
+    assert body["total"] == whole["total"] > 0
 
 
 def test_partial_works_on_the_grouped_path_the_ui_asks_for(service):
@@ -680,3 +695,37 @@ def test_index_html_names_the_app_in_full(service):
     assert '<div id="app"></div>' in body
     assert "<title>Stratechery Search</title>" in body
     assert "Stratechery search" not in body
+
+
+def test_the_json_a_keystroke_asks_for_is_compressed(service):
+    # Measured 2026-11-07 on a phone over the tailnet: one type-ahead response was
+    # 73 KB, uncompressed, against 11 KB gzipped — thirty times the query's own
+    # cost. Compressing it is the cheapest latency there is.
+    request = urllib.request.Request(
+        f"{service}/search?q=aggregation", headers={"Accept-Encoding": "gzip"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers.get("Content-Encoding") == "gzip"
+        # urllib does not decompress; gzip.decompress on the raw bytes is proof
+        # that what was sent is the body, not a header promise.
+        body = json.loads(gzip.decompress(response.read()))
+        # Vary is what stops a cache from handing the identity form to a client
+        # that asked for gzip.
+        assert "Accept-Encoding" in response.headers.get("Vary", "")
+    assert body["total"] > 0
+
+
+def test_a_client_that_did_not_ask_gets_plain_bytes(service):
+    with urllib.request.urlopen(f"{service}/search?q=aggregation", timeout=10) as response:
+        assert response.headers.get("Content-Encoding") is None
+        assert json.loads(response.read())["total"] > 0
+
+
+def test_head_answers_instead_of_501(service):
+    # `curl -I` and every uptime monitor use HEAD. It used to be 501 — which
+    # reads as "the site is broken", not as "unsupported method".
+    request = urllib.request.Request(f"{service}/healthz", method="HEAD")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.status == 200
+        assert response.read() == b""
+        assert int(response.headers["Content-Length"]) > 0

@@ -1,15 +1,24 @@
 // TEMPORARY. The instrument for the type-ahead latency gate (design note §7:
 // perceived latency under ~150 ms p95, measured on the phone, over the tailnet).
-// Remove with the flag: delete this file, the two `perf.note…` calls in api.js
-// and SearchPage.svelte, and the <PerfHud /> block in App.svelte.
+// Remove with the flag: delete this file, the `perf` calls in api.js and
+// SearchPage.svelte, and the <PerfHud /> block in App.svelte.
 //
 // Enabled by loading any page with `?perf=1`, which is remembered in
 // sessionStorage because the URL is rewritten on every keystroke and would
 // otherwise drop the flag on the first one. `?perf=0` turns it off again.
 //
-// What it measures is *perceived* latency: from the last keystroke of the word
-// to the first frame that paints the result. That is the number the gate is
-// about, so it includes the 120 ms debounce rather than starting at the fetch.
+// What it measures is *perceived* latency: from the keystroke that asked the
+// question to the frame that shows the answer. That includes the debounce,
+// because the reader waits for it too.
+//
+// The first version of this file paired the paint with the *latest keystroke*
+// rather than with the keystroke its request was dispatched for, which produced
+// negative debounces and 7 ms "latencies" for requests that had been in flight
+// before the key was pressed. So a request now owns its sample from dispatch:
+// the keystroke time is snapshotted when the debounce fires (noteDispatch), and
+// the paint is measured from that. Requests superseded by a newer keystroke are
+// dropped by the component and never paint, so the visible answer belongs to the
+// most recent dispatch.
 
 const STORAGE_KEY = "stratechery.perf";
 
@@ -43,19 +52,31 @@ export const perf = $state({
   samples: [],
   zero: 0,
   conn: connectionLabel(),
+  pendingPartial: false,
 });
 
-// The sample currently being assembled. Module scope, not state: it is written
-// by three call sites in two components and read by none.
-let keyAt = 0;
-let keyTerm = "";
+// The sample being assembled. Module scope, not state: it is written by three
+// call sites in two components and read by none.
+let keyAt = 0; // the keystroke that will ask the next question
+let dispatchKeyAt = 0; // …and the one the in-flight request was dispatched for
+let dispatchedAt = 0;
+let dispatchedTerm = "";
 let fetchAt = 0;
 
-export function noteKey(term) {
+export function noteKey() {
   if (!perf.enabled) return;
   keyAt = performance.now();
-  keyTerm = term;
+}
+
+// Called when the request is actually issued, which is when the debounce fires —
+// or immediately, for Enter.
+export function noteDispatch(partial, term = "") {
+  if (!perf.enabled) return;
+  dispatchKeyAt = keyAt || performance.now();
+  dispatchedAt = performance.now();
+  dispatchedTerm = term;
   fetchAt = 0;
+  perf.pendingPartial = Boolean(partial);
 }
 
 export function noteFetchStart(at) {
@@ -65,22 +86,26 @@ export function noteFetchStart(at) {
 
 // Called from a requestAnimationFrame after the response has been rendered, so
 // `now` is after a frame that had the cards in it.
-export function notePaint(body, partial) {
-  if (!perf.enabled || !keyAt) return;
-  const paintAt = performance.now();
+export function notePaint(body) {
+  if (!perf.enabled || !dispatchKeyAt) return;
   const query = body.query || {};
+  // A browse (a year chip), an article load or a superseded dispatch is not the
+  // answer to the question this sample is about. Only the dispatch whose term
+  // this response echoes paints the sample.
+  if ((query.raw ?? "") !== dispatchedTerm) return;
+  const paintAt = performance.now();
   const sample = {
-    q: query.raw ?? keyTerm,
-    partial: Boolean(partial),
+    q: query.raw ?? "",
+    partial: Boolean(perf.pendingPartial),
     total: body.total ?? 0,
-    keyToPaint: Math.round(paintAt - keyAt),
-    debounce: fetchAt ? Math.round(fetchAt - keyAt) : null,
+    keyToPaint: Math.round(paintAt - dispatchKeyAt),
+    debounce: Math.round(dispatchedAt - dispatchKeyAt),
     network: fetchAt ? Math.round(paintAt - fetchAt) : null,
     server: typeof body.took_ms === "number" ? body.took_ms : null,
     resolved: (query.resolved || []).length,
     at: new Date().toISOString(),
   };
-  keyAt = 0; // one sample per keystroke→paint pair
+  dispatchKeyAt = 0; // one sample per dispatch
   if (sample.partial && sample.total === 0) perf.zero += 1;
   perf.samples = [...perf.samples, sample].slice(-300);
 }
@@ -98,5 +123,5 @@ export function percentile(values, fraction) {
 export function clearSamples() {
   perf.samples = [];
   perf.zero = 0;
-  keyAt = 0;
+  dispatchKeyAt = 0;
 }

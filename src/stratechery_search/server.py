@@ -9,6 +9,7 @@ and in fact (every connection opens with ``mode=ro``).
 
 from __future__ import annotations
 
+import gzip
 import json
 import mimetypes
 import os
@@ -37,6 +38,20 @@ ASSET_CONTENT_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
+}
+
+#: Compress responses at or above this size. Below it the gzip header is worth
+#: more than the saving, and `Content-Length` is already tiny.
+MIN_GZIP_BYTES = 1024
+GZIP_LEVEL = 6
+#: Types worth compressing. Images are already compressed — re-deflating a PNG
+#: costs CPU per request and saves nothing — but SVG is text.
+COMPRESSIBLE_TYPES = {
+    "application/javascript",
+    "application/json",
+    "application/manifest+json",
+    "image/svg+xml",
+    "text/javascript",
 }
 
 
@@ -86,15 +101,64 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_json(self, body: dict, status: int = 200) -> None:
         payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(payload)
+        self._send_bytes(
+            payload,
+            "application/json; charset=utf-8",
+            status=status,
+            cache_control="no-store",
+        )
 
     def _send_error_body(self, error: api.ApiError) -> None:
         self._send_json(error.as_body(), error.status)
+
+    def _accepts_gzip(self) -> bool:
+        """Does the client offer gzip, and not refuse it with ``q=0``?"""
+        for token in self.headers.get("Accept-Encoding", "").split(","):
+            name, _, params = token.strip().partition(";")
+            if name.strip().lower() != "gzip":
+                continue
+            quality = params.strip().lower().removeprefix("q=")
+            return quality not in {"0", "0.0", "0.00", "0.000"}
+        return False
+
+    def _send_bytes(
+        self,
+        data: bytes,
+        content_type: str,
+        *,
+        status: int = 200,
+        cache_control: str | None = None,
+    ) -> None:
+        """Write a response body, compressing it when that is worth doing.
+
+        This exists because a keystroke was shipping 73 KB of JSON uncompressed
+        over the tailnet to a phone — more than the query itself cost by a factor
+        of thirty (measured 2026-11-07, design note §7). The same body is 11 KB
+        gzipped, and the JS bundle is 75 KB against 27 KB.
+        """
+        compressed = None
+        if (
+            len(data) >= MIN_GZIP_BYTES
+            and content_type.split(";")[0] in COMPRESSIBLE_TYPES
+            and self._accepts_gzip()
+        ):
+            compressed = gzip.compress(data, GZIP_LEVEL)
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        # Sent whether or not this response was compressed: a cache that stored
+        # the identity form must not answer a client that asked for gzip.
+        self.send_header("Vary", "Accept-Encoding")
+        if compressed is not None:
+            self.send_header("Content-Encoding", "gzip")
+            data = compressed
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        # HEAD: the headers are the answer, and sending a body would exceed the
+        # Content-Length we just declared. `curl -I` used to be a 501.
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(data)
 
     # -- routing ----------------------------------------------------------
 
@@ -205,12 +269,11 @@ class Handler(BaseHTTPRequestHandler):
             raise api.ApiError(404, "not_found", "no such asset", {"value": name})
 
         data = asset_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", ASSET_CONTENT_TYPES[extension])
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes(
+            data,
+            ASSET_CONTENT_TYPES[extension],
+            cache_control="public, max-age=31536000, immutable",
+        )
 
     def _serve_static_or_404(self, path: str) -> None:
         candidate = self.config.static_dir / path.lstrip("/")
@@ -238,11 +301,20 @@ class Handler(BaseHTTPRequestHandler):
         content_type = (
             mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         )
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes(data, content_type)
+
+    def do_HEAD(self) -> None:  # noqa: N802 - stdlib signature
+        """The same routing as GET, with the body withheld.
+
+        Monitors, link checkers and `curl -I` all use it; without it the service
+        answered 501 to every one of them, which reads as "broken", not as
+        "unsupported method".
+        """
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
 
     # Everything else is a method nobody may use: this service is read-only.
     def do_POST(self) -> None:  # noqa: N802 - stdlib signature
