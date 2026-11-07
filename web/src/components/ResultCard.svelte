@@ -1,5 +1,5 @@
 <script>
-  import { displaySubject, kindLabel } from "../lib/display.js";
+  import { articleHref, displaySubject, kindLabel } from "../lib/display.js";
 
   // The snippet arrives with <mark>…</mark> from SQLite's snippet(). It is article
   // text, so everything else is escaped before the marks go back in: the index
@@ -9,7 +9,7 @@
   // `browse` means there was no query to match: the snippet is how the article
   // opens rather than an excerpt around a hit, so the footer cannot point at a
   // passage.
-  let { result, passages = [], browse = false } = $props();
+  let { result, passages = [], browse = false, query = "" } = $props();
 
   let open = $state(false);
 
@@ -61,7 +61,14 @@
       >{displaySubject(result.subject)}</a
     >
   </header>
-  <p class="snippet">{@html safeSnippet(result.snippet)}</p>
+  <!-- The excerpt is the biggest target on the card and the thing a thumb lands
+       on, but only the title was a link — so tapping the text did nothing. An
+       anchor *around* the excerpt rather than an overlay stretched over the card:
+       an overlay would sit on top of the prose and steal text selection, in a
+       product whose point is copying passages out of an archive. -->
+  <a class="snippet" href={articleHref(result.article_href, query)}
+    >{@html safeSnippet(result.snippet)}</a
+  >
   <!-- One thing only: which passage of the article this is. The sender is the
        same address on every card, and character offsets and BM25 scores are
        index internals — three lines of developer telemetry under every snippet
@@ -87,7 +94,9 @@
     {#if open}
       {#each passages as passage (passage.chunk_id)}
         <div class="passage">
-          <p class="snippet">{@html safeSnippet(passage.snippet)}</p>
+          <a class="snippet" href={articleHref(passage.article_href, query)}
+            >{@html safeSnippet(passage.snippet)}</a
+          >
           <footer>
             <a class="num" href={passage.article_href}
               >passage {ordinal(passage.chunk_id)} →</a
@@ -135,13 +144,24 @@
     text-decoration: none;
   }
   .snippet {
+    display: block;
     margin: 5px 0 6px;
     font-size: 12.5px;
     line-height: 1.55;
     color: var(--ink-dim);
+    text-decoration: none;
     /* Article prose contains bare URLs and long identifiers; without this a
        single token scrolls the whole phone viewport sideways. */
     overflow-wrap: anywhere;
+  }
+  /* The excerpt is a link now, so it needs the affordances of one on hover
+     without turning the paragraph blue: the card already lifts on hover. */
+  a.snippet:hover {
+    color: var(--ink);
+    text-decoration: none;
+  }
+  a.snippet:hover mark {
+    color: var(--ink);
   }
   footer {
     display: flex;

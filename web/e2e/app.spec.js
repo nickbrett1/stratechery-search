@@ -241,6 +241,32 @@ test.describe("type-ahead (typing is the whole interaction)", () => {
 });
 
 test.describe("drill-in", () => {
+  test("the excerpt is clickable, not only the title", async ({ page }) => {
+    await page.goto("/?q=installed+base");
+    await expect(page.locator(card)).toHaveCount(1);
+    // A thumb lands on the excerpt, not on the 13px title above it.
+    await page.locator(card).first().locator("a.snippet").click();
+    await expect(page).toHaveURL(/\/article\/\d+\?q=installed/);
+    // …and the passage fragment survives a query string, or the article opens
+    // at the top and the reader hunts for the paragraph they clicked.
+    await expect(page).toHaveURL(/#c\d+-\d+$/);
+  });
+
+  test("a drill-in keeps and highlights the search it came from", async ({
+    page,
+  }) => {
+    await page.goto("/?q=installed+base");
+    await page.locator(card).first().locator("a.snippet").click();
+
+    await expect(page.locator("article.text mark").first()).toBeVisible();
+    await expect(page.getByText(/matches? for/)).toBeVisible();
+    // The words highlighted are the words searched: a highlight the reader
+    // cannot connect to the box they typed in is decoration.
+    await expect(page.locator("article.text mark").first()).toHaveText(
+      /installed|base/i,
+    );
+  });
+
   test("an article opens and shows a way back", async ({ page }) => {
     await page.goto(RANGE_2018);
     await page.locator(card).first().locator("a.subject").click();

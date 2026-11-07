@@ -98,3 +98,71 @@ export function toggleKindGroup(selected = [], kinds = []) {
     return selected.filter((kind) => !kinds.includes(kind));
   return [...new Set([...selected, ...kinds])];
 }
+
+// The words of a query, extracted exactly as the API extracts them
+// (`_WORD_RE` in api.py). Anything that is not a word-run is punctuation the
+// server has already made inert, and highlighting it would be a promise the
+// result did not make.
+// The same word-runs the API extracts (`_WORD_RE` in api.py), kept in step by
+// hand: a divergence shows up as a term highlighted that was never searched for.
+// It is the pattern the server runs per request, and each repetition consumes
+// at least one character, so the scanner's ReDoS heuristic does not apply.
+// eslint-disable-next-line security/detect-unsafe-regex
+const WORD_RUNS = /[^\W_]+(?:[-'][^\W_]+)*/gu;
+
+export function queryTerms(raw) {
+  return [...(String(raw || "").match(WORD_RUNS) ?? [])];
+}
+
+// A drill-in keeps the question that produced it. Without it the article page
+// cannot say what the reader was looking for, and a passage link from a search
+// and a passage link from nowhere look identical.
+//
+// The query goes *before* the fragment: `#c152-3` has to survive for the
+// scroll-to-passage to work, and a fragment is the last thing in a URL.
+export function articleHref(href, raw) {
+  const term = String(raw || "").trim();
+  if (!term) return href;
+  const [path, hash] = href.split("#");
+  const joiner = path.includes("?") ? "&" : "?";
+  const fragment = hash ? "#" + hash : "";
+  return path + joiner + "q=" + encodeURIComponent(term) + fragment;
+}
+
+// The characters that would change the meaning of the pattern. Written as a
+// blocklist rather than trusting the query: a reader can type `(` and `*`.
+const REGEXP_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+function escapeRegExp(text) {
+  return text.replace(REGEXP_SPECIALS, "\\$&");
+}
+
+// Split prose into matched and unmatched runs so the caller can render <mark>
+// around the matches. It returns text, never HTML: the article body and the
+// query are both untrusted as markup, and `{@html}` here would be a hole.
+//
+// The rule is "a word beginning with this term", not "this word exactly", and
+// that is deliberate: the index is Porter-stemmed, so `integration` really does
+// return `integrated` and `integrating`. An exact-word highlight would leave the
+// passage the reader clicked dark and highlight nothing at all in the common
+// case. Whole-word matching would be prettier and would misreport the search.
+export function highlightParts(text, terms = []) {
+  const words = terms.filter(Boolean);
+  if (!words.length || !text) return [{ text, hit: false }];
+  const pattern = words.map((word) => `${escapeRegExp(word)}[\\w-]*`).join("|");
+  // The query is a `new RegExp` argument on purpose; every term in it went
+  // through escapeRegExp above, so it contributes no operators.
+  // eslint-disable-next-line security/detect-non-literal-regexp
+  const matcher = new RegExp(`\\b(?:${pattern})`, "giu");
+  const parts = [];
+  let cursor = 0;
+  for (const match of text.matchAll(matcher)) {
+    if (match.index > cursor)
+      parts.push({ text: text.slice(cursor, match.index), hit: false });
+    parts.push({ text: match[0], hit: true });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length)
+    parts.push({ text: text.slice(cursor), hit: false });
+  return parts;
+}

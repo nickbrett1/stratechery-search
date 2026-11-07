@@ -346,6 +346,7 @@
               {result}
               passages={result.more_passages ?? []}
               browse={response.browse ?? false}
+              query={query.q}
             />
           {/each}
         </div>

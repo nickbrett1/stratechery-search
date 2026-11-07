@@ -1,6 +1,11 @@
 <script>
   import { article } from "../lib/api.js";
-  import { displaySubject, kindLabel } from "../lib/display.js";
+  import {
+    displaySubject,
+    highlightParts,
+    kindLabel,
+    queryTerms,
+  } from "../lib/display.js";
 
   let { messageId } = $props();
 
@@ -34,6 +39,20 @@
   });
 
   const chunkRanges = $derived(data?.chunks ?? []);
+
+  // The question that led here. It is carried on the drill-in link
+  // (lib/display.js `articleHref`), not in the article API: what an article
+  // contains is a fact about the archive, what the reader typed is a fact about
+  // their session, and only the second one belongs in a link.
+  const searchedFor =
+    new URLSearchParams(window.location.search).get("q") ?? "";
+  const terms = $derived(queryTerms(searchedFor));
+  const hits = $derived(
+    terms.length
+      ? highlightParts(data?.text ?? "", terms).filter((part) => part.hit)
+          .length
+      : 0,
+  );
 </script>
 
 {#if error}
@@ -75,6 +94,14 @@
     </dl>
   </header>
 
+  {#if hits}
+    <p class="hint found">
+      {hits}
+      {hits === 1 ? "match" : "matches"} for <b>{searchedFor}</b> — from the search
+      you came from.
+    </p>
+  {/if}
+
   {#if data.images.length}
     <section class="images">
       {#each data.images as image, index (image.url_path + index)}
@@ -107,7 +134,11 @@
           offset >= candidate.start_char && offset < candidate.end_char,
       )}
       <p id={chunk ? `c${chunk.chunk_id.replace(":", "-")}` : undefined}>
-        {paragraph}
+        <!-- Highlighted as text nodes, never as HTML: the body is mail, and the
+             query is whatever the reader typed. -->
+        {#each highlightParts(paragraph, terms) as part, partIndex (partIndex)}
+          {#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
+        {/each}
       </p>
     {/each}
   </article>
