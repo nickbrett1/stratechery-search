@@ -30,6 +30,10 @@ services:
       ARCHIVE_ROOT: ${ARCHIVE_ROOT:-/archive}
       DATA_ROOT: ${DATA_ROOT:-/data}
       INDEX_PATH: ${INDEX_PATH:-/data/index/search.sqlite}
+      # The synonym table is baked into the image from the repository, not read
+      # from the data volume: it is a reviewable artifact, so a change to it is
+      # a diff. /healthz reports the path and the term count it actually loaded.
+      VOCAB_PATH: ${VOCAB_PATH:-/app/vocab.yaml}
       PORT: ${PORT:-8080}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"

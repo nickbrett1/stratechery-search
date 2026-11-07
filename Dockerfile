@@ -47,6 +47,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 curl \
 ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=build /opt/venv /opt/venv
 COPY . .
+# The query-time synonym table, copied explicitly rather than left to `COPY . .`
+# above: the image must fail to build if the file is missing, because a shipped
+# image without it answers /healthz with `vocab: {terms: 0}` and looks healthy.
+# VOCAB_PATH defaults to `vocab.yaml` relative to WORKDIR (/app), i.e. this copy.
+COPY vocab.yaml ./vocab.yaml
 COPY --from=frontend /app/dist ./web/dist
 EXPOSE 8080
 
