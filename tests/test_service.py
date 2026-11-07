@@ -8,11 +8,14 @@ and the service has no write path. A shape change here is a contract change.
 from __future__ import annotations
 
 import json
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
 
 import pytest
+
+from stratechery_search import api
 
 
 def get(url: str) -> tuple[int, dict]:
@@ -329,6 +332,23 @@ def test_partial_must_be_a_boolean(service):
     status, body = get(f"{service}/search?q=the&partial=maybe")
     assert status == 400
     assert body["error"]["code"] == "bad_request"
+
+
+def test_a_missing_resolver_degrades_instead_of_failing(corpus):
+    # A new image against an index built before `terms` existed is a real window:
+    # the two deploy independently. Type-ahead must then behave like the search it
+    # replaced, not 500 on every keystroke.
+    _archive, _derived, index_path = corpus
+    conn = sqlite3.connect(index_path)
+    try:
+        conn.execute("DROP TABLE terms")
+        conn.commit()
+        body = api.search(conn, api.SearchParams(q="aggregat", partial=True), {})
+        assert body["total"] == 0
+        assert body["query"]["resolved"] == []
+        assert body["query"]["rewritten"] == '("aggregat"*)'
+    finally:
+        conn.close()
 
 
 def test_punctuation_never_becomes_fts_syntax(service):

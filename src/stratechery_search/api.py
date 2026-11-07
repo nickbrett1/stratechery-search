@@ -247,11 +247,18 @@ def resolve_prefix(conn: sqlite3.Connection, token: str) -> list[str]:
     keyword = token.casefold()
     if len(keyword) < MIN_PREFIX_CHARS:
         return []
-    rows = conn.execute(
-        "SELECT term FROM terms WHERE term >= ? AND term < ?"
-        " ORDER BY doc DESC, term LIMIT ?",
-        (keyword, keyword + "\U0010ffff", MAX_RESOLVED_TERMS),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            "SELECT term FROM terms WHERE term >= ? AND term < ?"
+            " ORDER BY doc DESC, term LIMIT ?",
+            (keyword, keyword + "\U0010ffff", MAX_RESOLVED_TERMS),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # An index built before `terms` existed. The image and the index are
+        # deployed independently — a new image against yesterday's file is a real
+        # window, not a hypothetical — so this degrades to whole-token matching
+        # (the prefix on its own) instead of 500ing on every keystroke.
+        return []
     return [row[0] for row in rows]
 
 
