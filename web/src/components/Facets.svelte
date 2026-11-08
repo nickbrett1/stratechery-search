@@ -31,10 +31,16 @@
   // company present across forty passages of one 2018 update is one article here,
   // which is what the result list shows.
   const entities = $derived(facets?.by_entity || []);
+  // Two dimensions, not one: `by_entity` carries the whole gazetteer, so a
+  // single "Company" heading listed Elon Musk and Mark Zuckerberg under it. The
+  // `kind` field was always there; the panel just never read it.
+  const companies = $derived(entities.filter((row) => row.kind === "company"));
+  const people = $derived(entities.filter((row) => row.kind === "person"));
   const hasBuckets = $derived(
     (facets?.by_year?.length ?? 0) > 0 ||
       (facets?.by_kind?.length ?? 0) > 0 ||
-      entities.length > 0,
+      companies.length > 0 ||
+      people.length > 0,
   );
 
   function entityActive(id) {
@@ -114,27 +120,29 @@
       <p class="hint">{totalKind} passages across {kinds.length} kinds</p>
     </section>
 
-    {#if entities.length}
-      <section>
-        <h2 class="section-title">Company</h2>
-        <ul class="toggles">
-          {#each entities as row (row.entity_id)}
-            <li>
-              <button
-                type="button"
-                class:active={entityActive(row.entity_id)}
-                title="{row.articles} articles mention {row.name}"
-                onclick={() => pickEntity(row.entity_id)}
-              >
-                <span>{row.name}</span>
-                <span class="count num">{row.articles}</span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-        <p class="hint">articles mentioning each, not passages</p>
-      </section>
-    {/if}
+    {#each [{ title: "Company", rows: companies }, { title: "People", rows: people }] as dimension (dimension.title)}
+      {#if dimension.rows.length}
+        <section>
+          <h2 class="section-title">{dimension.title}</h2>
+          <ul class="toggles">
+            {#each dimension.rows as row (row.entity_id)}
+              <li>
+                <button
+                  type="button"
+                  class:active={entityActive(row.entity_id)}
+                  title="{row.articles} articles mention {row.name}"
+                  onclick={() => pickEntity(row.entity_id)}
+                >
+                  <span>{row.name}</span>
+                  <span class="count num">{row.articles}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+          <p class="hint">articles mentioning each, not passages</p>
+        </section>
+      {/if}
+    {/each}
 
     <section>
       <h2 class="section-title">Images</h2>
