@@ -42,6 +42,10 @@ const card = ".card.result";
 // failure rather than a diff nobody reads.
 const READ_FOOTER = "read →";
 const SEARCH_BOX = "Search the corpus";
+// Two entity rows on the landing screen, asserted by name in several tests: the
+// split between them is the point (a person is not a company).
+const BROWSE_COMPANY = "Browse by company";
+const BROWSE_PEOPLE = "Browse by people";
 // The 2018 article in the fixture corpus, used as a stable "did this one come
 // back" probe.
 const AMAZON_TITLE = "More on Amazon";
@@ -107,7 +111,7 @@ test.describe("landing screen (nothing asked yet)", () => {
     const headings = await page
       .locator(".block > .micro, .block > .head .micro")
       .allTextContents();
-    const company = headings.indexOf("Browse by company");
+    const company = headings.indexOf(BROWSE_COMPANY);
     expect(company).toBeGreaterThanOrEqual(0);
     expect(company).toBeLessThan(headings.indexOf("Browse by year"));
     expect(company).toBeLessThan(headings.indexOf("Browse by kind"));
@@ -129,10 +133,86 @@ test.describe("landing screen (nothing asked yet)", () => {
     await page.goto("/");
 
     const names = await page
-      .locator(".block", { hasText: "Browse by company" })
+      .locator(".block", { hasText: BROWSE_COMPANY })
       .locator("button.pick span:first-child")
       .allTextContents();
     expect(names).toEqual(["Apple", "IBM"]);
+  });
+
+  test("offers a person as a place to start, apart from the companies", async ({
+    page,
+  }) => {
+    // /stats now carries two entity lists. The person row must render, must sort
+    // alphabetically like the company row, and must not be folded into it —
+    // "Elon Musk" under "Browse by company" is the defect this split fixes.
+    await page.route("**/stats", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.companies = [{ entity_id: "apple", name: "Apple", articles: 9 }];
+      body.people = [
+        { entity_id: "elon_musk", name: "Elon Musk", articles: 7 },
+        { entity_id: "jeff_bezos", name: "Jeff Bezos", articles: 3 },
+      ];
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/");
+
+    const headings = await page
+      .locator(".block > .micro, .block > .head .micro")
+      .allTextContents();
+    const company = headings.indexOf(BROWSE_COMPANY);
+    const people = headings.indexOf(BROWSE_PEOPLE);
+    expect(people).toBeGreaterThanOrEqual(0);
+    // Adjacent: a reader scanning for a name should not hunt between rows.
+    expect(people).toBe(company + 1);
+
+    expect(
+      await page
+        .locator(".block", { hasText: BROWSE_PEOPLE })
+        .locator("button.pick span:first-child")
+        .allTextContents(),
+    ).toEqual(["Elon Musk", "Jeff Bezos"]);
+    // ...and the company row is still exactly the companies.
+    expect(
+      await page
+        .locator(".block", { hasText: BROWSE_COMPANY })
+        .locator("button.pick span:first-child")
+        .allTextContents(),
+    ).toEqual(["Apple"]);
+  });
+
+  test("a person chip browses that person's articles", async ({ page }) => {
+    // A chip is a complete question: no query, still a browse. The entity
+    // parameter is what carries it, and people and companies share it.
+    await page.route("**/stats", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.people = [
+        { entity_id: "elon_musk", name: "Elon Musk", articles: 7 },
+      ];
+      await route.fulfill({ response, json: body });
+    });
+    // The fixture corpus ships no facets.sqlite, so the server answers this
+    // person's browse with 400 unknown_entity and the console guard fails the
+    // test for a reason that has nothing to do with the chip. What is asserted
+    // is that the chip carries the entity, not that the gazetteer knows Musk.
+    await page.route("**/search**", async (route) => {
+      const url = new URL(route.request().url());
+      // The real question asked is "browse Elon Musk"; the stub answers an
+      // ordinary query instead, because a browse with no filter at all is itself
+      // a 400 in this API ("nothing asked").
+      url.searchParams.delete("entity");
+      url.searchParams.set("q", "Amazon");
+      await route.fulfill({
+        response: await route.fetch({ url: url.toString() }),
+      });
+    });
+    await page.goto("/");
+    await page
+      .locator(".block", { hasText: BROWSE_PEOPLE })
+      .getByRole("button", { name: /Elon Musk/ })
+      .click();
+    await expect(page).toHaveURL(/entity=elon_musk/);
   });
 
   test("the search box says what it searches", async ({ page }) => {

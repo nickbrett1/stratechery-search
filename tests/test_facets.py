@@ -478,6 +478,46 @@ def test_the_landing_screen_can_offer_company_chips(facetted_service):
     assert companies["ibm"]["articles"] == 1
 
 
+def test_the_landing_screen_keeps_people_out_of_the_company_row(tmp_path):
+    """The panel's Elon-Musk-under-Company bug, one level up.
+
+    `/stats` used to emit a single `companies` list, so the landing screen had no
+    way to say "who" without also saying "which company". Two keys, and no entity
+    in both: a person filtering into the company row would reproduce exactly the
+    defect the facet panel was split to fix.
+    """
+    import sqlite3
+
+    from stratechery_search import api
+
+    body_with_person = "Satya Nadella runs Microsoft.\n\n" + MENTIONED
+    archive, derived, index_path = build_corpus(
+        tmp_path, bodies={152: body_with_person}
+    )
+    taxonomy_path = write_taxonomy(
+        tmp_path / "entities.yaml",
+        BASE
+        + "\n  - id: nadella\n    kind: person\n    name: Satya Nadella\n"
+        "    aliases: [Satya Nadella, Nadella]\n    measured: test\n",
+    )
+    out = tmp_path / "index" / "facets.sqlite"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
+    try:
+        facets.build(conn, facets.load_taxonomy(taxonomy_path), derived, out)
+        body = api.stats(conn, facets.open_index(out))
+    finally:
+        conn.close()
+
+    people = {row["entity_id"]: row for row in body["people"]}
+    companies = {row["entity_id"]: row for row in body["companies"]}
+    assert set(people) == {"nadella"}
+    assert people["nadella"]["name"] == "Satya Nadella"
+    assert people["nadella"]["articles"] == 1
+    assert set(companies) == {"apple", "ibm"}
+    assert not set(people) & set(companies)
+
+
 def test_stats_omits_the_company_list_when_there_is_no_gazetteer(
     corpus_with_mentions,
 ):
@@ -488,7 +528,11 @@ def test_stats_omits_the_company_list_when_there_is_no_gazetteer(
     _archive, _derived, index_path = corpus_with_mentions
     conn = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
     try:
-        assert "companies" not in api.stats(conn)
+        body = api.stats(conn)
+        assert "companies" not in body
+        # The person row is part of the same gazetteer: absent, not empty, for the
+        # same reason — an empty list claims a dimension and reports nobody in it.
+        assert "people" not in body
     finally:
         conn.close()
 

@@ -66,20 +66,24 @@
     });
   }
 
-  // A company chip is a complete question too (`/?entity=apple` browses Apple's
+  // An entity chip is a complete question too (`/?entity=apple` browses Apple's
   // articles), which is the job the facet exists for: a place to start, before
   // anything is typed. It is also the only place the gazetteer is visible
   // without a search, since the panel lives beside the results.
-  // Alphabetical, matching the facet panel: a chip list that reorders whenever a
-  // company is mentioned more often is a list you cannot learn the shape of. The
-  // count stays visible, so the head of the corpus is still obvious.
-  const companies = $derived(
-    [...(data?.companies ?? [])].sort((left, right) =>
-      left.name.localeCompare(right.name),
-    ),
-  );
+  // Alphabetical, matching the facet panel: a chip list that reorders whenever
+  // an entity is mentioned more often is a list you cannot learn the shape of.
+  // The count stays visible, so the head of the corpus is still obvious.
+  //
+  // Companies and people are two lists, not one, because they answer different
+  // questions ("which company" vs "which person") and because the whole reason
+  // the panel was split was that a single list had Elon Musk under "Company".
+  // The API keeps them apart for the same reason; this is one rendering each.
+  const byName = (rows) =>
+    [...rows].sort((left, right) => left.name.localeCompare(right.name));
+  const companies = $derived(byName(data?.companies ?? []));
+  const people = $derived(byName(data?.people ?? []));
 
-  function pickCompany(id) {
+  function pickEntity(id) {
     onchange({ ...query, offset: 0, entity: [id] });
   }
 </script>
@@ -119,7 +123,9 @@
   <!-- Companies first: browsing to a company is the more common question than
        browsing to a year, and it is the only row here that names something a
        reader cannot type from memory. Year and kind are calendar and shape;
-       company is a subject. -->
+       company is a subject. People sit directly beneath it — same question
+       ("who"), the same kind of answer, and adjacent so a reader scanning for a
+       name finds both rows without hunting. -->
   {#if companies.length}
     <div class="block">
       <span class="micro">Browse by company</span>
@@ -129,10 +135,29 @@
             class="pick wide"
             type="button"
             title="{company.articles} articles mention {company.name}"
-            onclick={() => pickCompany(company.entity_id)}
+            onclick={() => pickEntity(company.entity_id)}
           >
             <span>{company.name}</span>
             <span class="n num">{company.articles}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if people.length}
+    <div class="block">
+      <span class="micro">Browse by people</span>
+      <div class="picks">
+        {#each people as person (person.entity_id)}
+          <button
+            class="pick wide"
+            type="button"
+            title="{person.articles} articles mention {person.name}"
+            onclick={() => pickEntity(person.entity_id)}
+          >
+            <span>{person.name}</span>
+            <span class="n num">{person.articles}</span>
           </button>
         {/each}
       </div>

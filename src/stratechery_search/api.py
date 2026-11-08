@@ -1738,27 +1738,38 @@ def stats(conn: sqlite3.Connection, facet_index: Any = None) -> dict:
         # The landing screen's way in to the company facet. Absent when there is
         # no gazetteer, for the same reason `facets.by_entity` is: an empty list
         # would claim a dimension and report that nobody is in it.
-        **({"companies": _landing_companies(facet_index)} if facet_index else {}),
+        **(
+            {
+                "companies": _landing_entities(facet_index, "company"),
+                "people": _landing_entities(facet_index, "person"),
+            }
+            if facet_index
+            else {}
+        ),
     }
 
 
-def _landing_companies(facet_index: Any) -> list[dict]:
-    """Every company in the gazetteer, largest first, for the landing screen.
+def _landing_entities(facet_index: Any, kind: str) -> list[dict]:
+    """Every entity of one kind in the gazetteer, largest first.
 
     All of them, not a top-N: the first version cut at 12 by article count, which
     silently hid Anthropic (190 articles, rank 13) behind incumbents that simply
     have more archive. A cut that hides a company a reader is looking for is a
-    worse bug than a long chip row, and the row the UI shows first is a rendering
-    decision, not the API's.
+    worse bug than a long chip row, and the order the UI shows them in is a
+    rendering decision, not the API's.
+
+    Companies and people are separate keys rather than one list with a `kind`
+    field, because they are separate rows on the landing screen — the same split
+    the facet panel needed after it listed Elon Musk under "Company".
     """
     counts = [
         {
             "entity_id": entity_id,
-            "name": facet_index.entities[entity_id].name,
+            "name": entity.name,
             "articles": len(facet_index.articles_by_entity.get(entity_id, ())),
         }
         for entity_id, entity in facet_index.entities.items()
-        if entity.kind == "company"
+        if entity.kind == kind
     ]
     counts.sort(key=lambda row: (-row["articles"], row["entity_id"]))
     return counts
