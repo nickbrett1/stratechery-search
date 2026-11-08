@@ -1489,14 +1489,15 @@ def stats(conn: sqlite3.Connection, facet_index: Any = None) -> dict:
     }
 
 
-#: How many companies the landing screen offers. A chip row, not a directory:
-#: the top of the distribution is where a reader starts, and the panel's ranked
-#: list is the long tail once they are inside a result set.
-LANDING_COMPANIES = 12
-
-
 def _landing_companies(facet_index: Any) -> list[dict]:
-    """The gazetteer's largest companies, for the screens before a search."""
+    """Every company in the gazetteer, largest first, for the landing screen.
+
+    All of them, not a top-N: the first version cut at 12 by article count, which
+    silently hid Anthropic (190 articles, rank 13) behind incumbents that simply
+    have more archive. A cut that hides a company a reader is looking for is a
+    worse bug than a long chip row, and the row the UI shows first is a rendering
+    decision, not the API's.
+    """
     counts = [
         {
             "entity_id": entity_id,
@@ -1507,7 +1508,7 @@ def _landing_companies(facet_index: Any) -> list[dict]:
         if entity.kind == "company"
     ]
     counts.sort(key=lambda row: (-row["articles"], row["entity_id"]))
-    return counts[:LANDING_COMPANIES]
+    return counts
 
 
 def health(
