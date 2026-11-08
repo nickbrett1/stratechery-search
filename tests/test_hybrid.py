@@ -94,6 +94,28 @@ def test_transactional_mail_is_excluded_when_nothing_else_is_filtered():
     assert "is_transactional = false" in FilterSet().lance()
 
 
+def test_an_entity_filter_reaches_the_store_as_a_chunk_prefix():
+    """The Lance row has no ``message_id``; asking for one is a schema error.
+
+    Found by asking the live service for an entity filter on the deployed build:
+    the connection dropped with *No field named message_id*. The store carries
+    ``chunk_id`` == ``"<message_id>:<ordinal>"``, so the selection crosses as an
+    anchored prefix — which cannot match article 1520 while selecting 152.
+    """
+    filters = FilterSet(article_ids=(152, 85344))
+    assert "a.message_id IN (?,?)" in filters.sql()[0]
+    lance = filters.lance()
+    assert "regexp_like(chunk_id, '^(152|85344):')" in lance
+    assert "message_id" not in lance
+
+
+def test_an_entity_selection_that_matched_no_article_is_false_not_empty():
+    # Resolved to nothing: never co-occurring entities are an empty answer, and
+    # an empty predicate would answer "everything".
+    assert FilterSet(article_ids=()).sql()[0].count("1 = 0") == 1
+    assert FilterSet(article_ids=()).lance().split(" AND ")[0] == "false"
+
+
 def test_a_sender_with_a_quote_cannot_break_the_lance_expression():
     assert FilterSet(senders=("o'brien",)).lance().endswith("is_transactional = false")
     assert "('o''brien')" in FilterSet(senders=("o'brien",)).lance()

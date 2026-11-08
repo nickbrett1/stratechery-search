@@ -176,6 +176,7 @@ def _has_filter(params: SearchParams) -> bool:
         or params.end
         or params.kinds
         or params.senders
+        or params.entities
         or params.has_images is not None
     )
 

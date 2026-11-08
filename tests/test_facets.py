@@ -371,6 +371,13 @@ def test_an_entity_filter_narrows_the_results(facetted_service):
     assert len(both["results"]) == 2
 
 
+def test_a_company_is_a_question_on_its_own(facetted_service):
+    """A chip is a place to start: no q, still a browse (design note §2, job 3)."""
+    body = get_json(f"{facetted_service}/search?entity=ibm&group=article")
+    assert body["browse"] is True
+    assert [row["message_id"] for row in body["results"]] == [152]
+
+
 def test_the_counts_are_computed_sideways(facetted_service):
     """Choosing Apple must not collapse the other companies to zero.
 

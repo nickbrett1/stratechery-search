@@ -103,13 +103,18 @@ class FilterSet:
         if self.has_images is not None:
             clauses.append(f"has_images = {'true' if self.has_images else 'false'}")
         if self.article_ids is not None:
-            # The same resolved list as the SQL rendering above. A company is at
-            # most ~1,100 ids, so the literal stays small; `false` is what an
-            # empty answer means in this language.
+            # Not `message_id`: the store never received that column, and asking
+            # for it is a DataFusion schema error (`No field named message_id`)
+            # that drops the connection. Not a `chunk_id IN (...)` list either —
+            # Apple selects 21,436 passages, and a 150 KB literal list measured
+            # **1,967 ms** on ryzen against 571 ms for the same selection as one
+            # regexp. `chunk_id` is `"<message_id>:<ordinal>"`, so anchoring on
+            # the prefix is exact: `152:` cannot match `1520:`. `false` is what
+            # an empty answer means in this language.
             clauses.append(
-                "message_id IN ("
-                + ", ".join(str(int(i)) for i in self.article_ids)
-                + ")"
+                "regexp_like(chunk_id, '^("
+                + "|".join(str(int(i)) for i in self.article_ids)
+                + "):')"
                 if self.article_ids
                 else "false"
             )
@@ -118,7 +123,9 @@ class FilterSet:
 
     @classmethod
     def from_params(
-        cls, params: Any, article_ids: tuple[int, ...] | None = None
+        cls,
+        params: Any,
+        article_ids: tuple[int, ...] | None = None,
     ) -> FilterSet:
         """Build from an ``api.SearchParams`` without importing it (cycle-free).
 
