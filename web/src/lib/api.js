@@ -29,6 +29,10 @@ export function searchQuery(state) {
   if (state.to) params.set("to", state.to);
   for (const kind of state.kind || []) params.append("kind", kind);
   for (const sender of state.sender || []) params.append("sender", sender);
+  // The gazetteer dimension: repeatable, ANDed (a question about both companies
+  // is narrower than either alone). Absent means "no company filter", which is
+  // what every pre-existing link means. See lib/query.js for the URL contract.
+  for (const entity of state.entity || []) params.append("entity", entity);
   if (state.hasImages === "true" || state.hasImages === "false") {
     params.set("has_images", state.hasImages);
   }

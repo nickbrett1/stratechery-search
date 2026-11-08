@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import api, vector_store
+from . import api, facets, vector_store
 
 DEFAULT_PORT = 8080
 DEFAULT_ARCHIVE_ROOT = Path("/archive")
@@ -82,6 +82,13 @@ class Config:
         # directory. Nothing opens it until a hybrid request arrives.
         self.store_path = Path(
             os.environ.get("LANCEDB_PATH", data_root / "index" / "lancedb")
+        )
+        # 3-pre. Built per corpus by `build_facets`, so it is not in the image and
+        # its absence is normal: no file means no entity facet, not a broken
+        # service. Loaded once at start-up (it is ~10k pairs) rather than parsed
+        # per request like the vocabulary table.
+        self.facets_path = Path(
+            os.environ.get("FACETS_PATH", data_root / "index" / "facets.sqlite")
         )
 
 
@@ -197,7 +204,13 @@ class Handler(BaseHTTPRequestHandler):
                 vocab = api.load_vocab(self.config.vocab_path)
                 self._with_index(
                     lambda conn: self._send_json(
-                        api.health(conn, self.config.vocab_path, vocab)
+                        api.health(
+                            conn,
+                            self.config.vocab_path,
+                            vocab,
+                            self.config.facets_path,
+                            getattr(self.server, "facets", None),
+                        )
                     )
                 )
             elif path == "/stats":
@@ -215,6 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                             params,
                             vocab,
                             hybrid=getattr(self.server, "hybrid", None),
+                            facet_index=getattr(self.server, "facets", None),
                         )
                     )
                 )
@@ -367,6 +381,9 @@ def serve(config: Config) -> None:
     # Constructing this imports nothing native and opens nothing; the connect
     # happens on the warm-up thread below, not at import (design §4.6).
     server.hybrid = vector_store.Backend(config.store_path)  # type: ignore[attr-defined]
+    # None when the file is absent — see Config.facets_path. Loading it here (not
+    # per request) keeps a 10k-pair read off the reader's clock.
+    server.facets = facets.open_index(config.facets_path)  # type: ignore[attr-defined]
     threading.Thread(
         target=_warm_hybrid,
         args=(server.hybrid, config.index_path),

@@ -1,0 +1,333 @@
+# The 3-pre gazetteer: companies and people, one canonical id per article.
+#
+# Read by `stratechery_search.facets` and built into `facets.sqlite` by
+# `python -m stratechery_search.build_facets`. Versioned here rather than in
+# appdata so every change is a reviewable diff — the argument that killed the
+# `$DATA_ROOT/vocab.yaml` placement.
+#
+# Rules of the file, all enforced at load time:
+#   * `id` is lower_snake_case (it is a JSON key and a filter value), `kind` is
+#     `company` or `person`, and `name` must appear in its own `aliases`.
+#   * `case_sensitive` must be a subset of `aliases`. Use it for any surface that
+#     is also an ordinary English word: `WHO` matched the pronoun 1,379 times and
+#     the organisation 7, which is the measured reason this field exists.
+#   * Comments own their whole line. No inline `#`.
+#   * `measured:` is free text and is the *record* of why an entity was admitted.
+#     The authoritative counts are in `facets-report.json`; the numbers below are
+#     copied from it so the decision travels with the file.
+#
+# Admission floor: 20 articles. Below that a facet chip is noise — the reader
+# clicks it and gets three results — and the corpus has no shortage of better
+# dimensions. Rejections are recorded at the bottom rather than deleted.
+
+version: 1
+
+entities:
+  - id: apple
+    kind: company
+    name: Apple
+    aliases: [Apple]
+    case_sensitive: [Apple]
+    measured: 2026-11-08 union=1099 largest=Apple/1099 gain=+0
+
+  - id: google
+    kind: company
+    name: Google
+    aliases: [Google, Alphabet]
+    measured: 2026-11-08 union=1048 largest=Google/1045 gain=+3
+
+  - id: meta
+    kind: company
+    name: Meta
+    aliases: [Meta, Facebook, Instagram, WhatsApp]
+    case_sensitive: [Meta]
+    measured: 2026-11-08 union=999 largest=Facebook/796 gain=+203
+
+  - id: microsoft
+    kind: company
+    name: Microsoft
+    aliases: [Microsoft]
+    measured: 2026-11-08 union=697 largest=Microsoft/697 gain=+0
+
+  - id: amazon
+    kind: company
+    name: Amazon
+    aliases: [Amazon, AWS]
+    measured: 2026-11-08 union=746 largest=Amazon/669 gain=+77
+
+  - id: nvidia
+    kind: company
+    name: Nvidia
+    aliases: [Nvidia]
+    measured: 2026-11-08 union=289 largest=NVIDIA/289 gain=+0
+
+  - id: intel
+    kind: company
+    name: Intel
+    aliases: [Intel]
+    measured: 2026-11-08 union=268 largest=Intel/268 gain=+0
+
+  - id: amd
+    kind: company
+    name: AMD
+    aliases: [AMD]
+    case_sensitive: [AMD]
+    measured: 2026-11-08 union=134 largest=AMD/134 gain=+0
+
+  - id: tsmc
+    kind: company
+    name: TSMC
+    aliases: [TSMC, "Taiwan Semiconductor", "Taiwan Semiconductor Manufacturing"]
+    case_sensitive: [TSMC]
+    measured: 2026-11-08 union=227 largest=TSMC/224 gain=+3
+
+  - id: samsung
+    kind: company
+    name: Samsung
+    aliases: [Samsung]
+    measured: 2026-11-08 union=159 largest=Samsung/159 gain=+0
+
+  - id: qualcomm
+    kind: company
+    name: Qualcomm
+    aliases: [Qualcomm]
+    measured: 2026-11-08 union=99 largest=Qualcomm/99 gain=+0
+
+  - id: broadcom
+    kind: company
+    name: Broadcom
+    aliases: [Broadcom]
+    measured: 2026-11-08 union=35 largest=Broadcom/35 gain=+0
+
+  - id: asml
+    kind: company
+    name: ASML
+    aliases: [ASML]
+    case_sensitive: [ASML]
+    measured: 2026-11-08 union=49 largest=ASML/49 gain=+0
+
+  - id: arm
+    kind: company
+    name: Arm
+    aliases: [Arm]
+    case_sensitive: [Arm]
+    measured: 2026-11-08 union=38 largest=Arm/38 gain=+0
+
+  - id: smic
+    kind: company
+    name: SMIC
+    aliases: [SMIC, "Semiconductor Manufacturing International"]
+    case_sensitive: [SMIC]
+    measured: 2026-11-08 union=36 largest=SMIC/36 gain=+0
+
+  - id: foxconn
+    kind: company
+    name: Foxconn
+    aliases: [Foxconn, "Hon Hai"]
+    measured: 2026-11-08 union=22 largest=Foxconn/22 gain=+0
+
+  - id: netflix
+    kind: company
+    name: Netflix
+    aliases: [Netflix]
+    measured: 2026-11-08 union=346 largest=Netflix/346 gain=+0
+
+  - id: disney
+    kind: company
+    name: Disney
+    aliases: [Disney]
+    measured: 2026-11-08 union=195 largest=Disney/195 gain=+0
+
+  - id: spotify
+    kind: company
+    name: Spotify
+    aliases: [Spotify]
+    measured: 2026-11-08 union=245 largest=Spotify/245 gain=+0
+
+  - id: youtube
+    kind: company
+    name: YouTube
+    aliases: [YouTube]
+    measured: 2026-11-08 union=430 largest=YouTube/430 gain=+0
+
+  - id: bytedance
+    kind: company
+    name: ByteDance
+    aliases: [ByteDance, TikTok]
+    measured: 2026-11-08 union=236 largest=TikTok/225 gain=+11
+
+  - id: twitter
+    kind: company
+    name: Twitter
+    aliases: [Twitter]
+    measured: 2026-11-08 union=483 largest=Twitter/483 gain=+0
+
+  - id: openai
+    kind: company
+    name: OpenAI
+    aliases: [OpenAI]
+    measured: 2026-11-08 union=344 largest=OpenAI/344 gain=+0
+
+  - id: anthropic
+    kind: company
+    name: Anthropic
+    aliases: [Anthropic, Claude]
+    measured: 2026-11-08 union=190 largest=Anthropic/166 gain=+24
+
+  - id: deepseek
+    kind: company
+    name: DeepSeek
+    aliases: [DeepSeek]
+    measured: 2026-11-08 union=35 largest=DeepSeek/35 gain=+0
+
+  - id: uber
+    kind: company
+    name: Uber
+    aliases: [Uber]
+    case_sensitive: [Uber]
+    measured: 2026-11-08 union=175 largest=Uber/175 gain=+0
+
+  - id: airbnb
+    kind: company
+    name: Airbnb
+    aliases: [Airbnb]
+    measured: 2026-11-08 union=64 largest=Airbnb/64 gain=+0
+
+  - id: shopify
+    kind: company
+    name: Shopify
+    aliases: [Shopify]
+    measured: 2026-11-08 union=122 largest=Shopify/122 gain=+0
+
+  - id: stripe
+    kind: company
+    name: Stripe
+    aliases: [Stripe]
+    case_sensitive: [Stripe]
+    measured: 2026-11-08 union=106 largest=Stripe/106 gain=+0
+
+  - id: paypal
+    kind: company
+    name: PayPal
+    aliases: [PayPal]
+    measured: 2026-11-08 union=32 largest=PayPal/32 gain=+0
+
+  - id: visa
+    kind: company
+    name: Visa
+    aliases: [Visa]
+    case_sensitive: [Visa]
+    measured: 2026-11-08 union=40 largest=Visa/40 gain=+0
+
+  - id: mastercard
+    kind: company
+    name: Mastercard
+    aliases: [Mastercard, MasterCard]
+    measured: 2026-11-08 union=22 largest=Mastercard/22 gain=+0
+
+  - id: ibm
+    kind: company
+    name: IBM
+    aliases: [IBM]
+    case_sensitive: [IBM]
+    measured: 2026-11-08 union=116 largest=IBM/116 gain=+0
+
+  - id: oracle
+    kind: company
+    name: Oracle
+    aliases: [Oracle]
+    case_sensitive: [Oracle]
+    measured: 2026-11-08 union=99 largest=Oracle/99 gain=+0
+
+  - id: salesforce
+    kind: company
+    name: Salesforce
+    aliases: [Salesforce, SalesForce]
+    case_sensitive: [Salesforce, SalesForce]
+    measured: 2026-11-08 union=55 largest=Salesforce/55 gain=+0
+
+  - id: adobe
+    kind: company
+    name: Adobe
+    aliases: [Adobe]
+    measured: 2026-11-08 union=58 largest=Adobe/58 gain=+0
+
+  - id: tencent
+    kind: company
+    name: Tencent
+    aliases: [Tencent]
+    measured: 2026-11-08 union=43 largest=Tencent/43 gain=+0
+
+  - id: alibaba
+    kind: company
+    name: Alibaba
+    aliases: [Alibaba]
+    measured: 2026-11-08 union=38 largest=Alibaba/38 gain=+0
+
+  - id: zuckerberg
+    kind: person
+    name: Mark Zuckerberg
+    aliases: [Mark Zuckerberg, Zuckerberg]
+    measured: 2026-11-08 union=279 largest=Mark Zuckerberg/237 gain=+42
+
+  - id: tim_cook
+    kind: person
+    name: Tim Cook
+    aliases: [Tim Cook, Cook]
+    case_sensitive: [Cook]
+    measured: 2026-11-08 union=165 largest=Tim Cook/145 gain=+20
+
+  - id: satya_nadella
+    kind: person
+    name: Satya Nadella
+    aliases: [Satya Nadella, Nadella]
+    measured: 2026-11-08 union=151 largest=Satya Nadella/131 gain=+20
+
+  - id: sam_altman
+    kind: person
+    name: Sam Altman
+    aliases: [Sam Altman, Altman]
+    measured: 2026-11-08 union=81 largest=Sam Altman/69 gain=+12
+
+  - id: jensen_huang
+    kind: person
+    name: Jensen Huang
+    aliases: [Jensen Huang]
+    measured: 2026-11-08 union=76 largest=Jensen Huang/76 gain=+0
+
+  - id: elon_musk
+    kind: person
+    name: Elon Musk
+    aliases: [Elon Musk, Musk]
+    measured: 2026-11-08 union=130 largest=Elon Musk/119 gain=+11
+
+  - id: steve_jobs
+    kind: person
+    name: Steve Jobs
+    aliases: [Steve Jobs]
+    measured: 2026-11-08 union=126 largest=Steve Jobs/126 gain=+0
+
+  - id: jeff_bezos
+    kind: person
+    name: Jeff Bezos
+    aliases: [Jeff Bezos, Bezos]
+    measured: 2026-11-08 union=68 largest=Jeff Bezos/58 gain=+10
+
+  - id: sundar_pichai
+    kind: person
+    name: Sundar Pichai
+    aliases: [Sundar Pichai, Pichai]
+    measured: 2026-11-08 union=88 largest=Sundar Pichai/82 gain=+6
+
+# Rejected on 2026-11-08, with the reason, so nobody re-mines them hopefully:
+#   * FTC / DOJ / EU / GDPR / UK — regulators, not companies or people. Out of
+#     scope for 3-pre (`KINDS` is company|person); a regulator facet is a real
+#     idea and a different one.
+#   * Sharp / Sharp Tech — the podcast, and "sharp" is an English word.
+#   * Store / Services / App Store / PC / TV / API / CEO — noun phrases, not
+#     entities. They are exactly the shape a naive capitalised-token miner
+#     returns, which is why the admission test is a human read.
+#   * Any company measured under the 20-article floor. The first build's
+#     `per_entity` report is where that list comes from, not from memory: a chip
+#     that returns three results is noise, and the corpus has no shortage of
+#     better dimensions.

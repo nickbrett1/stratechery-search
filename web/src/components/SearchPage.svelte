@@ -69,6 +69,7 @@
       query.to ||
       (query.kind || []).length ||
       (query.sender || []).length ||
+      (query.entity || []).length ||
       query.hasImages,
     ),
   );
@@ -158,6 +159,19 @@
   // screen (it sat 4,016px below the top of the results — 4.8 screens), so on
   // mobile the filters come to the reader as a chip row instead, and the full
   // panel opens as a sheet.
+  // Entity ids are what the URL carries; the reader needs the company's name on
+  // the chip, and the facet payload is the only place that mapping exists. A
+  // selected id missing from the payload falls back to the id rather than an
+  // empty chip.
+  const entityNames = $derived(
+    new Map(
+      (response?.facets?.by_entity || []).map((row) => [
+        row.entity_id,
+        row.name,
+      ]),
+    ),
+  );
+
   const activeFilters = $derived.by(() => {
     const chips = [];
     if (query.from || query.to) {
@@ -201,6 +215,15 @@
         },
       });
     }
+    for (const entity of query.entity || []) {
+      chips.push({
+        key: `entity-${entity}`,
+        label: entityNames.get(entity) || entity,
+        patch: {
+          entity: (query.entity || []).filter((value) => value !== entity),
+        },
+      });
+    }
     if (query.hasImages) {
       chips.push({
         key: "images",
@@ -226,6 +249,7 @@
       to: "",
       kind: [],
       sender: [],
+      entity: [],
       hasImages: "",
     });
   }

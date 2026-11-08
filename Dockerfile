@@ -52,6 +52,11 @@ COPY . .
 # image without it answers /healthz with `vocab: {terms: 0}` and looks healthy.
 # VOCAB_PATH defaults to `vocab.yaml` relative to WORKDIR (/app), i.e. this copy.
 COPY vocab.yaml ./vocab.yaml
+# The gazetteer, copied explicitly for the same reason. The facet index is built
+# from this file, and the file is what decides which companies exist — an image
+# without it can still serve (the API omits `by_entity`), but it cannot rebuild
+# the index, and `build_facets` would fail only on ryzen, at deploy time.
+COPY entities.yaml ./entities.yaml
 COPY --from=frontend /app/dist ./web/dist
 EXPOSE 8080
 

@@ -37,6 +37,11 @@ class FilterSet:
     kinds: tuple[str, ...] = ()
     senders: tuple[str, ...] = ()
     has_images: bool | None = None
+    #: The entity facet, already resolved to article ids by the API layer.
+    #: ``None`` is "no entity filter" and ``()`` is "these entities never
+    #: co-occur" — the two must not collapse into one another, because rendering
+    #: an empty answer as "everything" is how a filter silently stops working.
+    article_ids: tuple[int, ...] | None = None
 
     # -- SQLite -----------------------------------------------------------
 
@@ -58,7 +63,17 @@ class FilterSet:
             clauses.append(f"{a}.sender IN (" + ",".join("?" * len(self.senders)) + ")")
             values.extend(self.senders)
         if self.has_images is not None:
-            clauses.append(f"{a}.n_images > 0" if self.has_images else f"{a}.n_images = 0")
+            clauses.append(
+                f"{a}.n_images > 0" if self.has_images else f"{a}.n_images = 0"
+            )
+        if self.article_ids is not None:
+            if not self.article_ids:
+                clauses.append("1 = 0")
+            else:
+                clauses.append(
+                    f"{a}.message_id IN (" + ",".join("?" * len(self.article_ids)) + ")"
+                )
+                values.extend(self.article_ids)
         clauses.append(f"{a}.is_transactional = 0")
         return (" AND ".join(clauses), values)
 
@@ -78,25 +93,46 @@ class FilterSet:
         if self.end:
             clauses.append(f"sent_at <= {_literal(f'{self.end}T23:59:59Z')}")
         if self.kinds:
-            clauses.append("kind IN (" + ", ".join(_literal(k) for k in self.kinds) + ")")
+            clauses.append(
+                "kind IN (" + ", ".join(_literal(k) for k in self.kinds) + ")"
+            )
         if self.senders:
             clauses.append(
                 "sender IN (" + ", ".join(_literal(s) for s in self.senders) + ")"
             )
         if self.has_images is not None:
             clauses.append(f"has_images = {'true' if self.has_images else 'false'}")
+        if self.article_ids is not None:
+            # The same resolved list as the SQL rendering above. A company is at
+            # most ~1,100 ids, so the literal stays small; `false` is what an
+            # empty answer means in this language.
+            clauses.append(
+                "message_id IN ("
+                + ", ".join(str(int(i)) for i in self.article_ids)
+                + ")"
+                if self.article_ids
+                else "false"
+            )
         clauses.append("is_transactional = false")
         return " AND ".join(clauses)
 
     @classmethod
-    def from_params(cls, params: Any) -> FilterSet:
-        """Build from an ``api.SearchParams`` without importing it (cycle-free)."""
+    def from_params(
+        cls, params: Any, article_ids: tuple[int, ...] | None = None
+    ) -> FilterSet:
+        """Build from an ``api.SearchParams`` without importing it (cycle-free).
+
+        ``article_ids`` is a separate argument rather than a field on the params
+        because it is *resolved* per request from the facet index — the params are
+        what the caller asked for, this is what it turned out to mean.
+        """
         return cls(
             start=params.start,
             end=params.end,
             kinds=tuple(params.kinds),
             senders=tuple(params.senders),
             has_images=params.has_images,
+            article_ids=article_ids,
         )
 
 

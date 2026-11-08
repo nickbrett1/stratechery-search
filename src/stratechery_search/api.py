@@ -21,6 +21,7 @@ from typing import Any
 
 from . import embed as embed_module
 from . import fusion
+from .facets import FacetError
 from .filters import FilterSet
 from .notes import daily_from_month, stats_notes
 from .vector_store import StoreError
@@ -119,6 +120,12 @@ class SearchParams:
     # matched by prefix. Off by default, so the MCP adapter, a bookmarked URL and
     # `curl` keep meaning exactly what they meant — a complete question.
     partial: bool = False
+    # 3-pre: the entity facet. A *closed* vocabulary — the ids come from
+    # entities.yaml via the built facet index — so an unknown id is a 400 and not
+    # an empty result that reads as "no articles". Resolution to article ids
+    # happens once per request (see `_entity_articles`) and is then handed to both
+    # arms as one predicate, which is the same discipline `FilterSet` exists for.
+    entities: tuple[str, ...] = ()
     # Phase 2: fuse the BM25 arm with a vector arm over LanceDB. **On by
     # default since 2026-11-07** (`hybrid=0` turns it off), because the corpus
     # pass is complete, parity is asserted, and the flag stops being a flag once
@@ -214,8 +221,21 @@ def parse_search_params(query: dict[str, list[str]]) -> SearchParams:
             400, "bad_request", "group must be passage or article", {"group": group}
         )
 
+    entities = tuple(
+        dict.fromkeys(
+            value
+            for value in (
+                part.strip()
+                for raw in query.get("entity", [])
+                for part in raw.split(",")
+            )
+            if value
+        )
+    )
+
     params = SearchParams(
         q=raw_q,
+        entities=entities,
         start=_check_date((query.get("from") or [None])[0], "from"),
         end=_check_date((query.get("to") or [None])[0], "to"),
         kinds=kinds,
@@ -454,15 +474,47 @@ def expand_query(raw: str, vocab: dict[str, dict]) -> tuple[str, list[dict]]:
     return (" AND ".join(parts) if parts else fts_query(raw)), expansions
 
 
-def _filters(params: SearchParams) -> tuple[str, list[Any]]:
+def _filters(
+    params: SearchParams, article_ids: tuple[int, ...] | None = None
+) -> tuple[str, list[Any]]:
     """The SQL rendering of the one eligibility predicate.
 
     The predicate itself lives in :mod:`.filters` because the vector arm needs
     the same question asked of LanceDB, and two hand-written predicates is how
     the two arms come to disagree about what "2023, interviews, no transactions"
     means — a drift that looks like a ranking problem forever.
+
+    ``article_ids`` is the entity facet, already resolved to article ids. It is
+    passed rather than looked up here because resolving it needs the facet
+    index, which is not a property of the request.
     """
-    return FilterSet.from_params(params).sql()
+    return FilterSet.from_params(params, article_ids=article_ids).sql()
+
+
+def _entity_articles(params: SearchParams, facet_index: Any) -> tuple[int, ...] | None:
+    """Resolve ``entity=`` to article ids, once, for both arms.
+
+    ``None`` means "no entity filter". An empty tuple is a real answer — entities
+    that never co-occur — and must not be confused with it: rendering ``None`` as
+    "everything" and ``()`` as "everything" is the same bug as an unmatched query
+    returning the corpus.
+    """
+    if not params.entities:
+        return None
+    if facet_index is None:
+        raise ApiError(
+            400,
+            "facet_unbuilt",
+            "entity filtering needs the facet index;"
+            " run `python -m stratechery_search.build_facets`",
+            {"entity": list(params.entities)},
+        )
+    try:
+        return tuple(sorted(facet_index.articles_for(params.entities)))
+    except FacetError as exc:
+        raise ApiError(
+            400, "unknown_entity", str(exc), {"entity": list(params.entities)}
+        ) from exc
 
 
 BROWSE_SNIPPET_CHARS = 240
@@ -489,7 +541,14 @@ def _opening(text: str | None, subject: str | None) -> str:
     return " ".join(body.split())[:BROWSE_SNIPPET_CHARS]
 
 
-def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> dict:
+def _browse(
+    conn: sqlite3.Connection,
+    params: SearchParams,
+    started: float,
+    *,
+    article_ids: tuple[int, ...] | None = None,
+    facet_index: Any = None,
+) -> dict:
     """The corpus newest-first under a filter, with no query and no ranking.
 
     An empty ``q`` only reaches here when ``_has_filter`` is true, so this answers
@@ -502,7 +561,8 @@ def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> d
     Facets are still computed, because a reader who has chosen 2019 wants to see
     that 2019 is what they chose and how the other years compare.
     """
-    where, values = _filters(params)
+    where, values = _filters(params, article_ids)
+    side_where, side_values = _filters(params)
     total, article_total = conn.execute(
         "SELECT count(*), count(DISTINCT c.message_id)"
         " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
@@ -566,6 +626,10 @@ def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> d
                     }
                 )
 
+    facets = _facets(conn, None, where, values)
+    _add_entity_facets(
+        facets, conn, None, side_where, side_values, facet_index=facet_index
+    )
     return {
         "query": {"raw": "", "rewritten": "", "expansions": [], "resolved": []},
         "browse": True,
@@ -575,7 +639,7 @@ def _browse(conn: sqlite3.Connection, params: SearchParams, started: float) -> d
         "offset": params.offset,
         "took_ms": int((time.perf_counter() - started) * 1000),
         "results": results,
-        "facets": _facets(conn, None, where, values),
+        "facets": facets,
     }
 
 
@@ -584,6 +648,7 @@ def search(
     params: SearchParams,
     vocab: dict[str, dict],
     hybrid: Any = None,
+    facet_index: Any = None,
 ) -> dict:
     """The one search entry point: BM25 alone, or BM25 fused with the vector arm.
 
@@ -595,6 +660,7 @@ def search(
     keeps serving.
     """
     started = time.perf_counter()
+    article_ids = _entity_articles(params, facet_index)
     if params.hybrid and not params.partial:
         if hybrid is None and not params.hybrid_explicit:
             # No store wired into this process and nobody asked for one (tests,
@@ -602,11 +668,33 @@ def search(
             # this has to be an ordinary BM25 answer: a default that can 500
             # every search is not a default. An *explicit* `hybrid=1` still
             # fails loudly below.
-            return _bm25_search(conn, params, vocab, started)
+            return _bm25_search(
+                conn,
+                params,
+                vocab,
+                started,
+                article_ids=article_ids,
+                facet_index=facet_index,
+            )
         try:
-            return _hybrid_search(conn, params, vocab, hybrid, started)
+            return _hybrid_search(
+                conn,
+                params,
+                vocab,
+                hybrid,
+                started,
+                article_ids=article_ids,
+                facet_index=facet_index,
+            )
         except embed_module.EmbedError as error:
-            degraded = _bm25_search(conn, params, vocab, started)
+            degraded = _bm25_search(
+                conn,
+                params,
+                vocab,
+                started,
+                article_ids=article_ids,
+                facet_index=facet_index,
+            )
             degraded["hybrid"] = {
                 "enabled": False,
                 "degraded": True,
@@ -617,14 +705,24 @@ def search(
             # A store that disagrees with the index is a deployment mistake, not
             # an operational condition: it must look like a failure (§4.5c).
             raise ApiError(500, error.code, str(error), error.detail) from error
-    return _bm25_search(conn, params, vocab, started)
+    return _bm25_search(
+        conn, params, vocab, started, article_ids=article_ids, facet_index=facet_index
+    )
 
 
 def _bm25_search(
-    conn: sqlite3.Connection, params: SearchParams, vocab: dict[str, dict], started: float
+    conn: sqlite3.Connection,
+    params: SearchParams,
+    vocab: dict[str, dict],
+    started: float,
+    *,
+    article_ids: tuple[int, ...] | None = None,
+    facet_index: Any = None,
 ) -> dict:
     if not params.q:
-        return _browse(conn, params, started)
+        return _browse(
+            conn, params, started, article_ids=article_ids, facet_index=facet_index
+        )
     if params.partial:
         match, expansions, resolved = partial_expression(conn, params.q, vocab)
     elif vocab:
@@ -635,8 +733,14 @@ def _bm25_search(
         resolved = []
     rewritten = match
 
-    where, values = _filters(params)
+    where, values = _filters(params, article_ids)
     where_sql = f" AND {where}" if where else ""
+    # The side-view for the entity facet: every filter *except* the entity
+    # selection, so a reader who has chosen Apple still sees how many articles
+    # each other company would give them. Naive intersection reads zero
+    # everywhere the moment one chip is clicked, which is the standard
+    # faceted-search defect (design note §4.4).
+    side_where, side_values = _filters(params)
 
     total = conn.execute(
         "SELECT count(*) FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
@@ -658,6 +762,9 @@ def _bm25_search(
         results = [_result(row) for row in rows]
 
     facets = _facets(conn, match, where, values)
+    _add_entity_facets(
+        facets, conn, match, side_where, side_values, facet_index=facet_index
+    )
     return {
         "query": {
             "raw": params.q,
@@ -706,7 +813,6 @@ def _result(row: tuple) -> dict:
     }
 
 
-
 #: How much of a passage a vector-only hit shows. It gets a *leading excerpt*,
 #: not a snippet: FTS5's ``snippet()`` needs a MATCH context and knows where the
 #: query terms were, and a passage the vector arm found *because it contains none
@@ -716,7 +822,17 @@ HYBRID_EXCERPT_CHARS = 240
 
 
 def _vector_only_result(row: tuple, distance: float) -> dict:
-    (chunk_id, message_id, start_char, end_char, sent_at, subject, kind, sender, text) = row
+    (
+        chunk_id,
+        message_id,
+        start_char,
+        end_char,
+        sent_at,
+        subject,
+        kind,
+        sender,
+        text,
+    ) = row
     excerpt = (text or "").strip().replace("\n", " ")
     return {
         "chunk_id": chunk_id,
@@ -786,6 +902,9 @@ def _hybrid_search(
     vocab: dict[str, dict],
     backend: Any,
     started: float,
+    *,
+    article_ids: tuple[int, ...] | None = None,
+    facet_index: Any = None,
 ) -> dict:
     """BM25 fused with a vector arm, by reciprocal rank (design §4.5)."""
     if backend is None:
@@ -797,7 +916,14 @@ def _hybrid_search(
         )
     if not params.q:
         # Browse is a filter over everything; there is no text to embed.
-        return _bm25_search(conn, params, vocab, started)
+        return _bm25_search(
+            conn,
+            params,
+            vocab,
+            started,
+            article_ids=article_ids,
+            facet_index=facet_index,
+        )
 
     span = fusion.window(params.offset, params.limit)
 
@@ -809,9 +935,10 @@ def _hybrid_search(
         match, expansions = expand_query(params.q, vocab)
     else:
         match, expansions = fts_query(params.q), []
-    filters = FilterSet.from_params(params)
+    filters = FilterSet.from_params(params, article_ids=article_ids)
     where, values = filters.sql()
     where_sql = f" AND {where}"
+    side_where, side_values = _filters(params)
 
     fts_ids = [
         row[0]
@@ -831,7 +958,13 @@ def _hybrid_search(
     fused = fusion.fuse([fts_ids, vector_ids])
     labels = fusion.matched_by(fts_ids, vector_ids)
     rows = _fused_rows(
-        conn, match, where_sql, values, [chunk_id for chunk_id, _ in fused], labels, distances
+        conn,
+        match,
+        where_sql,
+        values,
+        [chunk_id for chunk_id, _ in fused],
+        labels,
+        distances,
     )
 
     # `total` is the number of passages that matched — the same number BM25
@@ -871,7 +1004,9 @@ def _hybrid_search(
         "offset": params.offset,
         "took_ms": int((time.perf_counter() - started) * 1000),
         "results": results,
-        "facets": _facets(conn, match, where, values),
+        "facets": _hybrid_facets(
+            conn, match, where, values, side_where, side_values, facet_index
+        ),
         # `total` now means the same thing on both paths — passages matched — so
         # `fused` is what makes the difference legible: it is how many of them
         # this answer actually ranked, capped by the fusion window.
@@ -993,6 +1128,78 @@ def _grouped(
             }
         )
     return results, article_total
+
+
+def _matched_articles(
+    conn: sqlite3.Connection, match: str | None, where: str, values: list[Any]
+) -> set[int]:
+    """The distinct articles the current query matches, under ``where``.
+
+    Article grain on purpose: the entity facet counts articles, so the set it
+    counts over is the article set, not the passage set. Doing this with
+    ``count(DISTINCT ...)`` per entity would be 47 statements; the set is at most
+    1,647 ids, so it is fetched once and counted in memory.
+    """
+    where_sql = f" AND {where}" if where else ""
+    if match is None:
+        return {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT c.message_id"
+                " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+                f" WHERE {where or '1 = 1'}",
+                list(values),
+            )
+        }
+    return {
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT c.message_id"
+            " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
+            " JOIN articles a ON a.message_id = c.message_id"
+            f" WHERE chunks_fts MATCH ?{where_sql}",
+            [match, *values],
+        )
+    }
+
+
+def _add_entity_facets(
+    payload: dict,
+    conn: sqlite3.Connection,
+    match: str | None,
+    side_where: str,
+    side_values: list[Any],
+    *,
+    facet_index: Any,
+) -> None:
+    """Attach ``facets.by_entity`` computed *sideways*.
+
+    ``side_where`` is every filter except the entity selection, so the counts
+    answer "how many articles would each company give me" rather than "how many
+    of these Apple articles are also Apple". With no facet index the key is
+    absent rather than empty: a service with no gazetteer has no entity
+    dimension, and `[]` would claim it had one and found nothing.
+    """
+    if facet_index is None:
+        return
+    matched = _matched_articles(conn, match, side_where, side_values)
+    payload["by_entity"] = facet_index.counts(matched)
+
+
+def _hybrid_facets(
+    conn: sqlite3.Connection,
+    match: str,
+    where: str,
+    values: list[Any],
+    side_where: str,
+    side_values: list[Any],
+    facet_index: Any,
+) -> dict:
+    payload = _facets(conn, match, where, values)
+    _add_entity_facets(
+        payload, conn, match, side_where, side_values, facet_index=facet_index
+    )
+    return payload
 
 
 def _facets(
@@ -1281,6 +1488,8 @@ def health(
     conn: sqlite3.Connection,
     vocab_path: Path | None = None,
     vocab: dict[str, dict] | None = None,
+    facets_path: Path | None = None,
+    facet_index: Any = None,
 ) -> dict:
     """The index's own counts, plus whether the synonym table is loaded.
 
@@ -1302,5 +1511,14 @@ def health(
         "vocab": {
             "path": None if vocab_path is None else str(vocab_path),
             "terms": len(vocab or {}),
+        },
+        # The same "is the file firing?" question as `vocab`. `entities: 0` with a
+        # path is the honest answer for a service whose facet index was never
+        # built, and it is the state the UI must tolerate.
+        "facets": {
+            "path": None if facets_path is None else str(facets_path),
+            "entities": 0 if facet_index is None else len(facet_index.entities),
+            "version": 0 if facet_index is None else facet_index.version,
+            "articles": 0 if facet_index is None else len(facet_index.by_article),
         },
     }

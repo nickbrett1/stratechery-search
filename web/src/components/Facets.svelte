@@ -25,9 +25,32 @@
   // email address in a panel that is otherwise about the writing. The parameter
   // still works if it is in a URL, and it still shows up as a removable chip —
   // it just is not offered as a choice.
+  // The entity dimension arrives only when the service has a gazetteer index, and
+  // it is computed sideways — with the entity's own selection removed — so the
+  // counts stay useful the moment a chip is clicked. Articles, not passages: a
+  // company present across forty passages of one 2018 update is one article here,
+  // which is what the result list shows.
+  const entities = $derived(facets?.by_entity || []);
   const hasBuckets = $derived(
-    (facets?.by_year?.length ?? 0) > 0 || (facets?.by_kind?.length ?? 0) > 0,
+    (facets?.by_year?.length ?? 0) > 0 ||
+      (facets?.by_kind?.length ?? 0) > 0 ||
+      entities.length > 0,
   );
+
+  function entityActive(id) {
+    return (query.entity || []).includes(id);
+  }
+
+  function pickEntity(id) {
+    const chosen = query.entity || [];
+    onchange({
+      ...query,
+      offset: 0,
+      entity: chosen.includes(id)
+        ? chosen.filter((value) => value !== id)
+        : [...chosen, id],
+    });
+  }
 
   function yearActive(year) {
     return query.from === `${year}-01-01` && query.to === `${year}-12-31`;
@@ -90,6 +113,28 @@
       </ul>
       <p class="hint">{totalKind} passages across {kinds.length} kinds</p>
     </section>
+
+    {#if entities.length}
+      <section>
+        <h2 class="section-title">Company</h2>
+        <ul class="toggles">
+          {#each entities as row (row.entity_id)}
+            <li>
+              <button
+                type="button"
+                class:active={entityActive(row.entity_id)}
+                title="{row.articles} articles mention {row.name}"
+                onclick={() => pickEntity(row.entity_id)}
+              >
+                <span>{row.name}</span>
+                <span class="count num">{row.articles}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        <p class="hint">articles mentioning each, not passages</p>
+      </section>
+    {/if}
 
     <section>
       <h2 class="section-title">Images</h2>

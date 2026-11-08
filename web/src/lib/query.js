@@ -8,6 +8,9 @@ const DEFAULTS = {
   to: "",
   kind: [],
   sender: [],
+  // Entity ids from the closed gazetteer (``apple``, ``tsmc``), not surfaces.
+  // The id is the stable thing; the panel renders the name.
+  entity: [],
   hasImages: "",
   limit: 20,
   offset: 0,
@@ -25,6 +28,7 @@ function readSearchParams(search) {
     to: params.get("to") || "",
     kind: params.getAll("kind").filter((kind) => KINDS.includes(kind)),
     sender: params.getAll("sender").filter(Boolean),
+    entity: params.getAll("entity").filter(Boolean),
     hasImages: ["true", "false"].includes(params.get("has_images"))
       ? params.get("has_images")
       : "",
@@ -44,6 +48,7 @@ export function writeState(state, { replace = false, historyState = {} } = {}) {
   if (state.to) params.set("to", state.to);
   for (const kind of state.kind || []) params.append("kind", kind);
   for (const sender of state.sender || []) params.append("sender", sender);
+  for (const entity of state.entity || []) params.append("entity", entity);
   if (state.hasImages) params.set("has_images", state.hasImages);
   if (state.limit && state.limit !== DEFAULTS.limit)
     params.set("limit", String(state.limit));
