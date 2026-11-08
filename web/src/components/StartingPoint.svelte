@@ -1,6 +1,6 @@
 <script>
   import { stats } from "../lib/api.js";
-  import { groupKinds } from "../lib/display.js";
+  import { groupKinds, kindActive, toggleKindGroup } from "../lib/display.js";
   import { readRecent, remember, forget, forgetAll } from "../lib/recent.js";
 
   // What the reader sees before they have typed anything. On its own the app used
@@ -55,8 +55,15 @@
     });
   }
 
+  // A tollgle, not a launch: the panel's kind chips add to the selection, so the
+  // landing screen's must too — otherwise "daily update + weekly" is three
+  // separate visits and the second one silently drops the first.
   function pickKind(group) {
-    onchange({ ...query, offset: 0, kind: group.kinds });
+    onchange({
+      ...query,
+      offset: 0,
+      kind: toggleKindGroup(query.kind, group.kinds),
+    });
   }
 
   // A company chip is a complete question too (`/?entity=apple` browses Apple's
@@ -128,6 +135,7 @@
         {#each kinds as group (group.id)}
           <button
             class="pick wide"
+            class:on={kindActive(query.kind, group.kinds)}
             type="button"
             onclick={() => pickKind(group)}
           >
@@ -288,6 +296,14 @@
   .pick:focus-visible {
     border-color: rgba(125, 211, 252, 0.4);
     color: #fff;
+  }
+  .pick.on {
+    border-color: rgba(125, 211, 252, 0.55);
+    background: var(--accent-soft);
+    color: #fff;
+  }
+  .pick.on .n {
+    color: var(--accent);
   }
   .pick .n {
     font-size: 11px;
