@@ -64,13 +64,6 @@
   // anything is typed. It is also the only place the gazetteer is visible
   // without a search, since the panel lives beside the results.
   const companies = $derived(data?.companies ?? []);
-  // Twelve chips fit a phone row without a scroll; the rest are one tap away
-  // rather than absent. The count is shown so the reader knows there are more.
-  const FIRST_COMPANIES = 12;
-  let allCompanies = $state(false);
-  const shownCompanies = $derived(
-    allCompanies ? companies : companies.slice(0, FIRST_COMPANIES),
-  );
 
   function pickCompany(id) {
     onchange({ ...query, offset: 0, entity: [id] });
@@ -150,7 +143,7 @@
     <div class="block">
       <span class="micro">Browse by company</span>
       <div class="picks">
-        {#each shownCompanies as company (company.entity_id)}
+        {#each companies as company (company.entity_id)}
           <button
             class="pick wide"
             type="button"
@@ -162,15 +155,6 @@
           </button>
         {/each}
       </div>
-      {#if companies.length > FIRST_COMPANIES}
-        <button
-          class="quiet more"
-          type="button"
-          onclick={() => (allCompanies = !allCompanies)}
-        >
-          {allCompanies ? "fewer" : `all ${companies.length} companies →`}
-        </button>
-      {/if}
     </div>
   {/if}
 
@@ -211,9 +195,6 @@
     color: var(--ink-faint);
     text-decoration: underline;
     cursor: pointer;
-  }
-  .quiet.more {
-    margin-top: 6px;
   }
   .quiet:hover {
     color: var(--accent);
