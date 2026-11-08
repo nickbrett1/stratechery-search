@@ -70,7 +70,14 @@
   // articles), which is the job the facet exists for: a place to start, before
   // anything is typed. It is also the only place the gazetteer is visible
   // without a search, since the panel lives beside the results.
-  const companies = $derived(data?.companies ?? []);
+  // Alphabetical, matching the facet panel: a chip list that reorders whenever a
+  // company is mentioned more often is a list you cannot learn the shape of. The
+  // count stays visible, so the head of the corpus is still obvious.
+  const companies = $derived(
+    [...(data?.companies ?? [])].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    ),
+  );
 
   function pickCompany(id) {
     onchange({ ...query, offset: 0, entity: [id] });

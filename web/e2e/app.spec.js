@@ -95,9 +95,11 @@ test.describe("landing screen (nothing asked yet)", () => {
     await page.route("**/stats", async (route) => {
       const response = await route.fetch();
       const body = await response.json();
+      // Deliberately out of order and out of size order: the API hands these
+      // over largest-first, and the landing screen is supposed to re-sort them.
       body.companies = [
+        { entity_id: "ibm", name: "IBM", articles: 9 },
         { entity_id: "apple", name: "Apple", articles: 1 },
-        { entity_id: "ibm", name: "IBM", articles: 1 },
       ];
       await route.fulfill({ response, json: body });
     });
@@ -109,6 +111,28 @@ test.describe("landing screen (nothing asked yet)", () => {
     expect(company).toBeGreaterThanOrEqual(0);
     expect(company).toBeLessThan(headings.indexOf("Browse by year"));
     expect(company).toBeLessThan(headings.indexOf("Browse by kind"));
+  });
+
+  test("lists companies alphabetically, not by size", async ({ page }) => {
+    // A list sorted by magnitude reorders whenever the corpus grows, so the
+    // position of a name is never learnable. IBM has nine articles and Apple
+    // one; Apple still comes first.
+    await page.route("**/stats", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.companies = [
+        { entity_id: "ibm", name: "IBM", articles: 9 },
+        { entity_id: "apple", name: "Apple", articles: 1 },
+      ];
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/");
+
+    const names = await page
+      .locator(".block", { hasText: "Browse by company" })
+      .locator("button.pick span:first-child")
+      .allTextContents();
+    expect(names).toEqual(["Apple", "IBM"]);
   });
 
   test("the search box says what it searches", async ({ page }) => {
@@ -173,6 +197,38 @@ test.describe("searching", () => {
     await expect(
       page.locator(card).first().locator("mark").first(),
     ).toBeVisible();
+  });
+
+  test("orders the company facet alphabetically, not by size", async ({
+    page,
+  }) => {
+    // The fixture corpus builds no facets.sqlite, so `by_entity` never arrives
+    // on its own — the same gap that let three facet UI defects ship green.
+    // Stubbed here to pin the ordering decision: the API hands entities over
+    // largest-first, and the panel re-sorts them by name.
+    await page.route("**/search*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.facets = body.facets || {};
+      body.facets.by_entity = [
+        { entity_id: "ibm", name: "IBM", kind: "company", articles: 9 },
+        { entity_id: "apple", name: "Apple", kind: "company", articles: 1 },
+        { entity_id: "musk", name: "Elon Musk", kind: "person", articles: 1 },
+        { entity_id: "bezos", name: "Jeff Bezos", kind: "person", articles: 4 },
+      ];
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/?q=installed+base");
+
+    const section = (title) =>
+      page.locator(".facets section", {
+        has: page.getByRole("heading", { name: title }),
+      });
+    const labels = async (title) =>
+      section(title).locator("button span:first-child").allTextContents();
+
+    expect(await labels("Company")).toEqual(["Apple", "IBM"]);
+    expect(await labels("People")).toEqual(["Elon Musk", "Jeff Bezos"]);
   });
 
   test("the term is remembered, and replays from the landing screen", async ({

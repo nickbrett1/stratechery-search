@@ -34,8 +34,19 @@
   // Two dimensions, not one: `by_entity` carries the whole gazetteer, so a
   // single "Company" heading listed Elon Musk and Mark Zuckerberg under it. The
   // `kind` field was always there; the panel just never read it.
-  const companies = $derived(entities.filter((row) => row.kind === "company"));
-  const people = $derived(entities.filter((row) => row.kind === "person"));
+  // Alphabetical, not by count. The API hands these over largest-first, which is
+  // the right order for *choosing* a facet dimension but the wrong order for
+  // *finding* one: 38 companies sorted by magnitude move whenever the corpus
+  // grows, so a name's position is never learnable. The number is still shown,
+  // so size is not hidden — it is just no longer the sort key.
+  const byName = (rows) =>
+    [...rows].sort((left, right) => left.name.localeCompare(right.name));
+  const companies = $derived(
+    byName(entities.filter((row) => row.kind === "company")),
+  );
+  const people = $derived(
+    byName(entities.filter((row) => row.kind === "person")),
+  );
   const hasBuckets = $derived(
     (facets?.by_year?.length ?? 0) > 0 ||
       (facets?.by_kind?.length ?? 0) > 0 ||
