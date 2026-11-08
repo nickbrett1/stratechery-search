@@ -110,11 +110,23 @@ def test_transactional_mail_is_never_searchable(service):
     assert stats["searchable_articles"] == stats["articles"] - 1
 
 
-def test_filters_and_facets_narrow_together(service):
+def test_filters_narrow_the_results_and_their_dimensions_narrow_each_other(service):
     _, body = get(f"{service}/search?q=the&kind=update&from=2026-01-01")
     assert body["total"] >= 1
     assert all(result["kind"] == "update" for result in body["results"])
-    assert [facet["year"] for facet in body["facets"]["by_year"]] == [2026]
+    # The results are narrowed by the date *and* the kind...
+    assert {result["sent_at"][:4] for result in body["results"]} == {"2026"}
+    # ...but the year buckets are counted with the year selection removed, so the
+    # 2018 article is still offered as something the reader could switch to. A
+    # dimension counted under its own filter is a one-way door: pick a year and
+    # every other year disappears.
+    assert [facet["year"] for facet in body["facets"]["by_year"]] == [2018, 2026]
+    # The other filters still apply to that bucket: only the 2026 update survives
+    # the date, so the bucket reports one article while the year bucket — which
+    # has the date removed — still reports both.
+    assert body["facets"]["by_kind"] == [
+        {"kind": "update", "articles": 1, "count": 3}
+    ]
 
     _, empty = get(f"{service}/search?q=the&kind=interview")
     assert empty["total"] == 0

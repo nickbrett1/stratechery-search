@@ -392,6 +392,33 @@ def test_the_counts_are_computed_sideways(facetted_service):
     assert [row["message_id"] for row in body["results"]] == [152, 85344]
 
 
+def test_a_kind_bucket_is_counted_with_its_own_selection_removed():
+    """The rule §9 states for entities, applied to the phase-1 dimensions.
+
+    Counted *under* the kind filter, choosing "daily update" deletes every other
+    kind from the panel — a one-way door reported from a phone ("I pick one and
+    then I can't select the other"). The fixture corpus has a single searchable
+    kind, so the rule is pinned at the predicate rather than through a response.
+    """
+    from stratechery_search import api
+
+    params = api.SearchParams(q="x", kinds=("daily",), start="2018-01-01")
+    sideways = api._sideways(params)
+    for dimension in ("kind", "year", "images"):
+        assert dimension in sideways
+    # The kind's own predicate has no kind clause; every other predicate does.
+    assert "kind IN" not in sideways["kind"][0]
+    assert "kind IN" in sideways["year"][0]
+    assert "sent_at >=" not in sideways["year"][0]
+    assert "sent_at >=" in sideways["kind"][0]
+
+
+def test_a_year_does_not_hide_the_other_years(facetted_service):
+    body = get_json(f"{facetted_service}/search?from=2018-01-01&to=2018-12-31")
+    years = {row["year"] for row in body["facets"]["by_year"]}
+    assert 2018 in years and len(years) > 1
+
+
 def test_an_unknown_entity_is_a_400(facetted_service):
     import urllib.error
 

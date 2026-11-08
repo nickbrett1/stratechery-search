@@ -15,7 +15,7 @@ import html
 import re
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -492,6 +492,25 @@ def _filters(
     return FilterSet.from_params(params, article_ids=article_ids).sql()
 
 
+def _sideways(
+    params: SearchParams, article_ids: tuple[int, ...] | None = None
+) -> dict[str, tuple[str, list[Any]]]:
+    """Per-dimension predicates with *that dimension's own selection removed*.
+
+    The rule the entity facet already followed (§9), applied to the dimensions
+    that shipped in phase 1: a count is only useful if the reader can still see
+    what picking a *different* value would give them. Computed under the full
+    filter, choosing "daily update" removes every other kind from the panel — not
+    because the corpus lost them, but because the count asked the wrong question.
+    Reported from the phone: "I pick one and then I can't select the other".
+    """
+    return {
+        "year": _filters(replace(params, start=None, end=None), article_ids),
+        "kind": _filters(replace(params, kinds=()), article_ids),
+        "images": _filters(replace(params, has_images=None), article_ids),
+    }
+
+
 def _entity_articles(params: SearchParams, facet_index: Any) -> tuple[int, ...] | None:
     """Resolve ``entity=`` to article ids, once, for both arms.
 
@@ -627,7 +646,9 @@ def _browse(
                     }
                 )
 
-    facets = _facets(conn, None, where, values)
+    facets = _facets(
+        conn, None, where, values, sideways=_sideways(params, article_ids)
+    )
     _add_entity_facets(
         facets, conn, None, side_where, side_values, facet_index=facet_index
     )
@@ -762,7 +783,9 @@ def _bm25_search(
         ).fetchall()
         results = [_result(row) for row in rows]
 
-    facets = _facets(conn, match, where, values)
+    facets = _facets(
+        conn, match, where, values, sideways=_sideways(params, article_ids)
+    )
     _add_entity_facets(
         facets, conn, match, side_where, side_values, facet_index=facet_index
     )
@@ -1006,7 +1029,15 @@ def _hybrid_search(
         "took_ms": int((time.perf_counter() - started) * 1000),
         "results": results,
         "facets": _hybrid_facets(
-            conn, match, where, values, side_where, side_values, facet_index
+            conn,
+            params,
+            article_ids,
+            match,
+            where,
+            values,
+            side_where,
+            side_values,
+            facet_index,
         ),
         # `total` now means the same thing on both paths — passages matched — so
         # `fused` is what makes the difference legible: it is how many of them
@@ -1189,6 +1220,8 @@ def _add_entity_facets(
 
 def _hybrid_facets(
     conn: sqlite3.Connection,
+    params: SearchParams,
+    article_ids: tuple[int, ...] | None,
     match: str,
     where: str,
     values: list[Any],
@@ -1196,7 +1229,9 @@ def _hybrid_facets(
     side_values: list[Any],
     facet_index: Any,
 ) -> dict:
-    payload = _facets(conn, match, where, values)
+    payload = _facets(
+        conn, match, where, values, sideways=_sideways(params, article_ids)
+    )
     _add_entity_facets(
         payload, conn, match, side_where, side_values, facet_index=facet_index
     )
@@ -1204,64 +1239,75 @@ def _hybrid_facets(
 
 
 def _facets(
-    conn: sqlite3.Connection, match: str | None, where: str, values: list[Any]
+    conn: sqlite3.Connection,
+    match: str | None,
+    where: str,
+    values: list[Any],
+    sideways: dict[str, tuple[str, list[Any]]] | None = None,
 ) -> dict:
-    """Facet counts under the current filter, from the same statement family.
+    """Facet counts, each dimension counted with its own selection removed.
 
     Shipping facets inside ``/search`` is deliberate (§3 NEW): a second
     ``/facets`` call renders counts that lag the result set by one round trip,
-    which is the classic faceted-search bug.
+    which is the classic faceted-search bug. The other half of that bug is the
+    one this function had until 2026-11-08: counting a dimension *under* its own
+    filter hides every value the reader did not pick, so a chip bar becomes a
+    one-way door — pick "daily update" and "weekly" vanishes.
+
+    ``sideways`` maps a dimension to the predicate that applies every filter
+    *except* that dimension's own. A dimension with no entry falls back to the
+    full predicate, which is right for one with no selection to remove.
     """
-    where_sql = f" AND {where}" if where else ""
-    if match is None:
-        # Browse mode: no MATCH, so the same counts run over the filtered corpus.
-        base = (
-            " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
-            f" WHERE {where or '1 = 1'}"
-        )
-        args: list[Any] = list(values)
-    else:
-        base = (
+    sideways = sideways or {}
+
+    def base(clause: tuple[str, list[Any]]) -> tuple[str, list[Any]]:
+        clause_where, clause_values = clause
+        if match is None:
+            # Browse mode: no MATCH, so the same counts run over the filtered
+            # corpus.
+            return (
+                " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+                f" WHERE {clause_where or '1 = 1'}",
+                list(clause_values),
+            )
+        where_sql = f" AND {clause_where}" if clause_where else ""
+        return (
             " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
             " JOIN articles a ON a.message_id = c.message_id"
-            f" WHERE chunks_fts MATCH ?{where_sql}"
+            f" WHERE chunks_fts MATCH ?{where_sql}",
+            [match, *clause_values],
         )
-        args = [match, *values]
 
-    def grouped(expression: str) -> list[tuple]:
+    def grouped(
+        dimension: str | None, expression: str, order: str = "bucket"
+    ) -> list[tuple]:
+        clause = sideways.get(dimension, (where, values)) if dimension else (where, values)
+        sql, args = base(clause)
         return conn.execute(
             f"SELECT {expression} AS bucket, count(DISTINCT c.message_id), count(*)"
-            f"{base} GROUP BY bucket ORDER BY bucket",
+            f"{sql} GROUP BY bucket ORDER BY {order}",
             args,
         ).fetchall()
 
     by_year = [
         {"year": int(year), "articles": articles, "count": count}
-        for year, articles, count in grouped("substr(a.sent_at, 1, 4)")
+        for year, articles, count in grouped("year", "substr(a.sent_at, 1, 4)")
         if year is not None
     ]
     by_kind = [
         {"kind": kind, "articles": articles, "count": count}
-        for kind, articles, count in conn.execute(
-            f"SELECT a.kind, count(DISTINCT c.message_id), count(*){base}"
-            " GROUP BY a.kind ORDER BY a.kind",
-            args,
-        ).fetchall()
+        for kind, articles, count in grouped("kind", "a.kind")
     ]
+    # No Sender facet in the UI (three addresses, all @stratechery.com), so there
+    # is no selection to remove: the full predicate is the honest answer.
     by_sender = [
         {"sender": sender or "", "articles": articles, "count": count}
-        for sender, articles, count in conn.execute(
-            f"SELECT a.sender, count(DISTINCT c.message_id), count(*){base}"
-            " GROUP BY a.sender ORDER BY a.sender",
-            args,
-        ).fetchall()
+        for sender, articles, count in grouped(None, "a.sender")
     ]
     images = {"true": 0, "false": 0}
-    for flag, articles in conn.execute(
-        "SELECT CASE WHEN a.n_images > 0 THEN 'true' ELSE 'false' END AS bucket,"
-        f" count(DISTINCT c.message_id){base} GROUP BY bucket",
-        args,
-    ).fetchall():
+    for flag, articles, _count in grouped(
+        "images", "CASE WHEN a.n_images > 0 THEN 'true' ELSE 'false' END"
+    ):
         images[flag] = articles
     return {
         "by_year": by_year,
