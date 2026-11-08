@@ -116,7 +116,17 @@ class Space:
             table = self.backend.table(conn)
             rows = (
                 table.search()
-                .select(["chunk_id", "vector", "is_transactional"])
+                .select(
+                    [
+                        "chunk_id",
+                        "vector",
+                        "is_transactional",
+                        # Provenance, so `/similar` can say what the ranking was
+                        # computed from instead of implying a model it did not use.
+                        "embed_model",
+                        "chunker_version",
+                    ]
+                )
                 .limit(None)
                 .to_list()
             )
@@ -235,7 +245,7 @@ class Space:
                     ids[rows[row_index]],
                     Neighbour(
                         chunk_id=ids[column],
-                        distance=round(1.0 - score, 6),
+                        distance=round(max(0.0, 1.0 - score), 6),
                         matched_passages=1,
                     ),
                 )
@@ -265,7 +275,12 @@ class Space:
         )
         best_per_row = np.argmax(scores, axis=1)  # each query passage's best match
         best = scores.max(axis=0)  # each target's best match over my passages
-        matched = np.bincount(best_per_row, minlength=len(ids))
+        # Count per *article*, not per target passage. Counting columns and then
+        # folding reported `matched_passages: 1` for a re-sent article that all
+        # fifteen of the query's passages had chosen — because each of them chose
+        # a *different* passage of it. The number is meant to say how much of the
+        # query this article echoes.
+        matched = np.bincount(targets[best_per_row], minlength=int(targets.max()) + 1)
 
         # One row per article, carrying its best passage. `argmax` per article
         # would be a second pass; taking the best column directly is the same
@@ -284,8 +299,10 @@ class Space:
             chosen.append(
                 Neighbour(
                     chunk_id=ids[index],
-                    distance=round(1.0 - score, 6),
-                    matched_passages=int(matched[index]),
+                    # Clamped at 0: floating point puts an identical pair a
+                    # hair *past* 1.0, and "-0.0" in a payload reads as a bug.
+                    distance=round(max(0.0, 1.0 - score), 6),
+                    matched_passages=int(matched[article]),
                 )
             )
             if len(chosen) >= limit:

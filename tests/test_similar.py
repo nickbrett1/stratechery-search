@@ -142,6 +142,23 @@ def test_the_ranking_is_by_best_passage_not_by_average(tmp_path):
     assert answers[0].matched_passages == 2  # both of my passages chose article 10
 
 
+def test_matched_passages_counts_my_passages_not_the_targets(tmp_path):
+    """A re-sent article must read as fully matched, not as matched once.
+
+    Regression from the live box: article 96907 (one of the three byte-identical
+    re-sends) returned 96906 at distance 0 with `matched_passages: 1`, because
+    the count was gathered per target *passage* and folded. All fifteen of its
+    query passages had chosen 96906 — each one a different passage of it.
+    """
+    rows = [row(f"500:{i}", vector(1.0, 0.0)) for i in range(3)]
+    rows += [row(f"900:{i}", vector(1.0, 0.0)) for i in range(3)]
+    corpus = similar.Space(tmp_path / "lance", FakeBackend(rows))
+    answers = corpus.neighbours(["500:0", "500:1", "500:2"], exclude_article=500, limit=1)
+    assert answers[0].chunk_id.startswith("900:")
+    assert answers[0].matched_passages == 3
+    assert answers[0].distance == 0.0  # never "-0.0" in a payload
+
+
 def test_the_same_article_twice_gives_the_same_order(space):
     first = space.neighbours(["152:0", "152:1"], exclude_article=152, limit=5)
     second = space.neighbours(["152:1", "152:0"], exclude_article=152, limit=5)
