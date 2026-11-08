@@ -109,19 +109,23 @@
     </div>
   {/if}
 
-  {#if years.length}
+  <!-- Companies first: browsing to a company is the more common question than
+       browsing to a year, and it is the only row here that names something a
+       reader cannot type from memory. Year and kind are calendar and shape;
+       company is a subject. -->
+  {#if companies.length}
     <div class="block">
-      <span class="micro">Browse by year</span>
+      <span class="micro">Browse by company</span>
       <div class="picks">
-        {#each years as bucket (bucket.year)}
+        {#each companies as company (company.entity_id)}
           <button
-            class="pick"
+            class="pick wide"
             type="button"
-            title="{bucket.articles} articles in {bucket.year}"
-            onclick={() => pickYear(bucket.year)}
+            title="{company.articles} articles mention {company.name}"
+            onclick={() => pickCompany(company.entity_id)}
           >
-            <span class="num">{bucket.year}</span>
-            <span class="n num">{bucket.articles}</span>
+            <span>{company.name}</span>
+            <span class="n num">{company.articles}</span>
           </button>
         {/each}
       </div>
@@ -147,19 +151,19 @@
     </div>
   {/if}
 
-  {#if companies.length}
+  {#if years.length}
     <div class="block">
-      <span class="micro">Browse by company</span>
+      <span class="micro">Browse by year</span>
       <div class="picks">
-        {#each companies as company (company.entity_id)}
+        {#each years as bucket (bucket.year)}
           <button
-            class="pick wide"
+            class="pick"
             type="button"
-            title="{company.articles} articles mention {company.name}"
-            onclick={() => pickCompany(company.entity_id)}
+            title="{bucket.articles} articles in {bucket.year}"
+            onclick={() => pickYear(bucket.year)}
           >
-            <span>{company.name}</span>
-            <span class="n num">{company.articles}</span>
+            <span class="num">{bucket.year}</span>
+            <span class="n num">{bucket.articles}</span>
           </button>
         {/each}
       </div>

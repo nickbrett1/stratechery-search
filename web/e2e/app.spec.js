@@ -82,6 +82,35 @@ test.describe("landing screen (nothing asked yet)", () => {
     await expect(page.locator(card)).toHaveCount(0);
   });
 
+  test("puts companies above the calendar and the kind", async ({ page }) => {
+    // The owner's call (2026-11-08): browsing to a company is the more common
+    // question than browsing to a year, and it is the only row here that names
+    // something a reader cannot type from memory. Order is a decision, so it is
+    // asserted rather than left to whoever edits the template next.
+    //
+    // The fixture corpus ships no facets.sqlite, so /stats has no `companies` at
+    // all — the same gap that let three facet UI defects ship green. The row is
+    // stubbed: what is being tested here is the order of the blocks, not the
+    // gazetteer.
+    await page.route("**/stats", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.companies = [
+        { entity_id: "apple", name: "Apple", articles: 1 },
+        { entity_id: "ibm", name: "IBM", articles: 1 },
+      ];
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/");
+    const headings = await page
+      .locator(".block > .micro, .block > .head .micro")
+      .allTextContents();
+    const company = headings.indexOf("Browse by company");
+    expect(company).toBeGreaterThanOrEqual(0);
+    expect(company).toBeLessThan(headings.indexOf("Browse by year"));
+    expect(company).toBeLessThan(headings.indexOf("Browse by kind"));
+  });
+
   test("the search box says what it searches", async ({ page }) => {
     await page.goto("/");
     const box = page.getByRole("searchbox", { name: SEARCH_BOX });
