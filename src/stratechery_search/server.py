@@ -217,7 +217,9 @@ class Handler(BaseHTTPRequestHandler):
                 if self._wants_html():
                     self._serve_static("index.html")
                 else:
-                    self._with_index(lambda conn: self._send_json(api.stats(conn)))
+                    self._with_index(lambda conn: self._send_json(
+                        api.stats(conn, getattr(self.server, "facets", None))
+                    ))
             elif path == "/search":
                 params = api.parse_search_params(query)
                 vocab = api.load_vocab(self.config.vocab_path)

@@ -58,6 +58,16 @@
   function pickKind(group) {
     onchange({ ...query, offset: 0, kind: group.kinds });
   }
+
+  // A company chip is a complete question too (`/?entity=apple` browses Apple's
+  // articles), which is the job the facet exists for: a place to start, before
+  // anything is typed. It is also the only place the gazetteer is visible
+  // without a search, since the panel lives beside the results.
+  const companies = $derived(data?.companies ?? []);
+
+  function pickCompany(id) {
+    onchange({ ...query, offset: 0, entity: [id] });
+  }
 </script>
 
 <section class="start">
@@ -123,6 +133,25 @@
           >
             <span>{group.label}</span>
             <span class="n num">{group.articles}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if companies.length}
+    <div class="block">
+      <span class="micro">Browse by company</span>
+      <div class="picks">
+        {#each companies as company (company.entity_id)}
+          <button
+            class="pick wide"
+            type="button"
+            title="{company.articles} articles mention {company.name}"
+            onclick={() => pickCompany(company.entity_id)}
+          >
+            <span>{company.name}</span>
+            <span class="n num">{company.articles}</span>
           </button>
         {/each}
       </div>

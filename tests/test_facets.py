@@ -438,6 +438,34 @@ def test_no_entity_parameter_leaves_the_rest_of_the_answer_identical(
     assert with_facets == without
 
 
+def test_the_landing_screen_can_offer_company_chips(facetted_service):
+    """No search has happened yet, so /stats is the only place the facet shows.
+
+    Additive, and absent rather than empty when there is no gazetteer: `[]` would
+    claim a dimension and report that nobody is in it.
+    """
+    body = get_json(f"{facetted_service}/stats")
+    companies = {row["entity_id"]: row for row in body["companies"]}
+    assert companies["apple"]["articles"] == 2
+    assert companies["apple"]["name"] == "Apple"
+    assert companies["ibm"]["articles"] == 1
+
+
+def test_stats_omits_the_company_list_when_there_is_no_gazetteer(
+    corpus_with_mentions,
+):
+    import sqlite3
+
+    from stratechery_search import api
+
+    _archive, _derived, index_path = corpus_with_mentions
+    conn = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
+    try:
+        assert "companies" not in api.stats(conn)
+    finally:
+        conn.close()
+
+
 def test_healthz_says_whether_the_gazetteer_fired(facetted_service):
     body = get_json(f"{facetted_service}/healthz")
     assert body["facets"]["entities"] == 2

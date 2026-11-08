@@ -1375,7 +1375,7 @@ def article(conn: sqlite3.Connection, message_id: int) -> dict:
     }
 
 
-def stats(conn: sqlite3.Connection) -> dict:
+def stats(conn: sqlite3.Connection, facet_index: Any = None) -> dict:
     row = conn.execute(
         "SELECT articles, searchable_articles, chunks, first_sent_at, last_sent_at,"
         " transactional, articles_with_images, images_distinct, built_at,"
@@ -1482,7 +1482,32 @@ def stats(conn: sqlite3.Connection) -> dict:
             "chunker_version": chunker_version,
             "built_at": built_at,
         },
+        # The landing screen's way in to the company facet. Absent when there is
+        # no gazetteer, for the same reason `facets.by_entity` is: an empty list
+        # would claim a dimension and report that nobody is in it.
+        **({"companies": _landing_companies(facet_index)} if facet_index else {}),
     }
+
+
+#: How many companies the landing screen offers. A chip row, not a directory:
+#: the top of the distribution is where a reader starts, and the panel's ranked
+#: list is the long tail once they are inside a result set.
+LANDING_COMPANIES = 12
+
+
+def _landing_companies(facet_index: Any) -> list[dict]:
+    """The gazetteer's largest companies, for the screens before a search."""
+    counts = [
+        {
+            "entity_id": entity_id,
+            "name": facet_index.entities[entity_id].name,
+            "articles": len(facet_index.articles_by_entity.get(entity_id, ())),
+        }
+        for entity_id, entity in facet_index.entities.items()
+        if entity.kind == "company"
+    ]
+    counts.sort(key=lambda row: (-row["articles"], row["entity_id"]))
+    return counts[:LANDING_COMPANIES]
 
 
 def health(
