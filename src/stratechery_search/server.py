@@ -13,6 +13,7 @@ import gzip
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import threading
 from http import HTTPStatus
@@ -20,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import api, facets, vector_store
+from . import api, facets, similar, vector_store
 
 DEFAULT_PORT = 8080
 DEFAULT_ARCHIVE_ROOT = Path("/archive")
@@ -40,6 +41,10 @@ ASSET_CONTENT_TYPES = {
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
 }
+
+#: Phase 4. `/article/{id}/similar` is its own path, not a query on `/article`:
+#: the article page fetches it after paint, so the render never waits on it.
+SIMILAR_PATH = re.compile(r"^/article/(\d+)/similar$")
 
 #: Compress responses at or above this size. Below it the gzip header is worth
 #: more than the saving, and `Content-Length` is already tiny.
@@ -234,6 +239,19 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     )
                 )
+            elif SIMILAR_PATH.match(path):
+                # Phase 4. JSON only: this is fetched by the article page after
+                # paint, never navigated to, so there is no HTML variant. A
+                # process with no store says 503 rather than pretending the
+                # article has no neighbours.
+                message_id = int(SIMILAR_PATH.match(path).group(1))
+                limit, grain = api.parse_similar_params(query)
+                space = getattr(self.server, "similar", None)
+                self._with_index(
+                    lambda conn: self._send_json(
+                        api.similar(conn, message_id, space, limit=limit, grain=grain)
+                    )
+                )
             elif path.startswith("/article/"):
                 if self._wants_html():
                     self._serve_static("index.html")
@@ -386,6 +404,10 @@ def serve(config: Config) -> None:
     # None when the file is absent — see Config.facets_path. Loading it here (not
     # per request) keeps a 10k-pair read off the reader's clock.
     server.facets = facets.open_index(config.facets_path)  # type: ignore[attr-defined]
+    # Phase 4. Constructing this reads nothing: the 245 MB corpus matrix is
+    # loaded on the first `/similar` request, keyed on store mtime (design §5),
+    # so an article page that never asks pays nothing.
+    server.similar = similar.Space(config.store_path, server.hybrid)  # type: ignore[attr-defined]
     threading.Thread(
         target=_warm_hybrid,
         args=(server.hybrid, config.index_path),

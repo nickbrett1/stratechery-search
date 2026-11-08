@@ -59,5 +59,14 @@ export function searchQuery(state) {
 export const search = (state) => getJson("/search", searchQuery(state));
 export const article = (messageId) =>
   getJson(`/article/${encodeURIComponent(messageId)}`);
+// Phase 4. Deliberately its own call rather than a block on `/article/{id}`: the
+// article must paint without waiting on 245 MB of vectors, and a 503 here is a
+// missing list, not a broken page. The contract takes no `min_distance` — the
+// similarity floor was measured and refuted, so the client cannot ask for one.
+export const similar = (messageId, limit = 8) =>
+  getJson(
+    `/article/${encodeURIComponent(messageId)}/similar`,
+    new URLSearchParams({ limit: String(limit) }),
+  );
 export const stats = () => getJson("/stats");
 export const health = () => getJson("/healthz");

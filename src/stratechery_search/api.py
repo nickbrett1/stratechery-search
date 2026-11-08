@@ -21,6 +21,7 @@ from typing import Any
 
 from . import embed as embed_module
 from . import fusion
+from . import similar as similar_module
 from .facets import FacetError
 from .filters import FilterSet
 from .notes import daily_from_month, stats_notes
@@ -1418,6 +1419,212 @@ def article(conn: sqlite3.Connection, message_id: int) -> dict:
         "text": body,
         "images": images,
         "n_images": n_images,
+    }
+
+
+def parse_similar_params(query: dict[str, list[str]]) -> tuple[int, str]:
+    """``limit`` and ``grain`` for ``/article/{id}/similar`` (phase 4 §6).
+
+    ``min_distance`` is not accepted as a parameter at all: the similarity floor
+    was measured and refuted over 129 queries ([[similarity-floor-test]] — on
+    ``unbundling`` the right article sits at 0.6384 while two wrong ones sit at
+    0.5750), so an accepted-but-ignored knob would be the design note's own
+    "a floor set before seeing any data is a guess" in API form.
+    """
+    raw_limit = (query.get("limit") or [""])[0]
+    if raw_limit == "":
+        limit = similar_module.DEFAULT_LIMIT
+    else:
+        try:
+            limit = int(raw_limit)
+        except ValueError as error:
+            raise ApiError(
+                400, "bad_request", "limit must be an integer", {"limit": raw_limit}
+            ) from error
+        if not 1 <= limit <= similar_module.MAX_LIMIT:
+            raise ApiError(
+                400,
+                "bad_request",
+                f"limit must be between 1 and {similar_module.MAX_LIMIT}",
+                {"limit": limit},
+            )
+    grain = (query.get("grain") or ["article"])[0] or "article"
+    if grain not in {"article", "passage"}:
+        raise ApiError(
+            400, "bad_request", "grain must be article or passage", {"grain": grain}
+        )
+    return limit, grain
+
+
+#: How much of a neighbouring passage the similar list shows. Reuses the
+#: vector-only-hit rule: a leading excerpt, escaped, and **no marks** — nothing
+#: matched a query here, so there is nothing to highlight (§4.5d).
+SIMILAR_EXCERPT_CHARS = HYBRID_EXCERPT_CHARS
+
+
+def _year_of(sent_at: str | None) -> int | None:
+    try:
+        return int(str(sent_at)[:4])
+    except (TypeError, ValueError):
+        return None
+
+
+def similar(
+    conn: sqlite3.Connection,
+    message_id: int,
+    space: Any,
+    *,
+    limit: int = similar_module.DEFAULT_LIMIT,
+    grain: str = "article",
+) -> dict:
+    """``GET /article/{message_id}/similar`` — see the phase 4 note §6.
+
+    Two properties are load-bearing and neither is an optimisation:
+
+    * **Self-exclusion is inside :mod:`.similar`**, before ranking, by article.
+      A passage's nearest neighbours are its own adjacent passages, so an
+      unmasked version ships looking like a mirror (§3.1).
+    * **A neighbour that will not resolve is a 503, never a dropped row or a
+      500.** The Lance store and ``search.sqlite`` must agree; a list built from
+      chunk ids that no longer resolve is a lie about the archive (§3.5).
+    """
+    started = time.perf_counter()
+    if space is None:
+        raise ApiError(
+            503,
+            similar_module.SimilarError.code,
+            "this process has no vector store loaded",
+        )
+
+    row = conn.execute(
+        "SELECT sent_at, subject FROM articles WHERE message_id = ?", (message_id,)
+    ).fetchone()
+    if row is None:
+        raise ApiError(404, "not_found", "no such article", {"message_id": message_id})
+    query_sent_at, query_subject = row
+    query_year = _year_of(query_sent_at)
+
+    chunk_ids = [
+        chunk_id
+        for (chunk_id,) in conn.execute(
+            "SELECT chunk_id FROM chunks WHERE message_id = ? ORDER BY ordinal",
+            (message_id,),
+        )
+    ]
+    if not chunk_ids:
+        # An article with no passages cannot be asked about. That is the index
+        # disagreeing with itself, not a reader error.
+        raise ApiError(
+            503,
+            similar_module.SimilarError.code,
+            "this article has no passages in the index",
+            {"message_id": message_id},
+        )
+
+    try:
+        if grain == "passage":
+            answered = space.passage_neighbours(
+                chunk_ids, exclude_article=message_id, limit=limit, conn=conn
+            )
+            ordered = []
+            from_query = {}
+            for query_chunk, neighbour in answered:
+                # Two of my passages can choose the same target passage. At this
+                # grain that is one row, keyed to the passage that matched it
+                # best — the list is already sorted by distance.
+                if neighbour.chunk_id in from_query:
+                    continue
+                from_query[neighbour.chunk_id] = query_chunk
+                ordered.append(neighbour)
+        else:
+            ordered = space.neighbours(
+                chunk_ids, exclude_article=message_id, limit=limit, conn=conn
+            )
+            from_query = {}
+        basis = space.basis(len(chunk_ids))
+    except similar_module.SimilarError as error:
+        raise ApiError(503, error.code, str(error)) from error
+
+    if not ordered:
+        neighbours: list[dict] = []
+    else:
+        placeholders = ",".join("?" * len(ordered))
+        found = {
+            row[0]: row[1:]
+            for row in conn.execute(
+                "SELECT c.chunk_id, c.message_id, c.start_char, c.end_char, a.sent_at,"
+                " a.subject, a.kind, a.sender, c.text, c.text_sha256"
+                " FROM chunks c JOIN articles a ON a.message_id = c.message_id"
+                f" WHERE c.chunk_id IN ({placeholders})",
+                [neighbour.chunk_id for neighbour in ordered],
+            )
+        }
+        missing = [
+            neighbour.chunk_id for neighbour in ordered if neighbour.chunk_id not in found
+        ]
+        if missing:
+            raise ApiError(
+                503,
+                similar_module.SimilarError.code,
+                "the store and search.sqlite disagree about which passages exist",
+                {"missing": missing[:5], "missing_count": len(missing)},
+            )
+        neighbours = []
+        for neighbour in ordered:
+            (
+                found_message,
+                start_char,
+                end_char,
+                sent_at,
+                subject,
+                kind,
+                sender,
+                text,
+                _text_sha256,
+            ) = found[neighbour.chunk_id]
+            neighbour_year = _year_of(sent_at)
+            card = {
+                "message_id": found_message,
+                "sent_at": sent_at,
+                "subject": subject,
+                "kind": kind,
+                "sender": sender,
+                # Cosine distance, lower is closer — the same convention and the
+                # same direction as `hybrid.top1_distance`. There is deliberately
+                # no `similarity` field: two vocabularies for one number is how a
+                # UI ends up inverting a sort.
+                "distance": neighbour.distance,
+                "matched_passages": neighbour.matched_passages,
+                "chunk_id": neighbour.chunk_id,
+                "start_char": start_char,
+                "end_char": end_char,
+                "excerpt": html.escape(
+                    (text or "").strip().replace("\n", " ")[:SIMILAR_EXCERPT_CHARS]
+                ),
+                "article_href": f"/article/{found_message}#c{neighbour.chunk_id.replace(':', '-')}",
+                # `group=article`'s own meaning one level down: the other
+                # passages of this article that also chose it, not a score.
+                "more_passages": max(0, neighbour.matched_passages - 1),
+                # §3.4: neighbouring articles drift forward, and the honest way to
+                # publish that is to show it rather than to name it a theme.
+                "year_delta": (
+                    neighbour_year - query_year
+                    if neighbour_year is not None and query_year is not None
+                    else None
+                ),
+            }
+            if grain == "passage":
+                card["query_chunk_id"] = from_query.get(neighbour.chunk_id)
+            neighbours.append(card)
+
+    return {
+        "message_id": message_id,
+        "subject": query_subject,
+        "grain": grain,
+        "basis": basis,
+        "results": neighbours,
+        "limit": limit,
+        "took_ms": int((time.perf_counter() - started) * 1000),
     }
 
 

@@ -1,5 +1,5 @@
 <script>
-  import { article } from "../lib/api.js";
+  import { article, similar } from "../lib/api.js";
   import {
     displaySubject,
     highlightParts,
@@ -22,6 +22,30 @@
       })
       .catch((failure) => {
         if (!cancelled) error = failure;
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // "Elsewhere in the archive" — phase 4. A second request, started only once
+  // the article itself has rendered: the page must never wait on 245 MB of
+  // vectors, and a 503 here (`similar_unavailable`) leaves the block absent
+  // rather than failing the article, which is a correctness property and not
+  // only a latency one. Nothing is said if the block cannot be fetched.
+  let neighbours = $state(null);
+  let neighbourError = $state(null);
+  $effect(() => {
+    if (!data) return;
+    let cancelled = false;
+    neighbours = null;
+    neighbourError = null;
+    similar(messageId)
+      .then((body) => {
+        if (!cancelled) neighbours = body;
+      })
+      .catch((failure) => {
+        if (!cancelled) neighbourError = failure;
       });
     return () => {
       cancelled = true;
@@ -142,6 +166,39 @@
       </p>
     {/each}
   </article>
+
+  <!-- Copy discipline (phase 4 §7): this is a ranked, dated list a reader can
+       verify in two seconds. It is never "related topics" or "themes" — that
+       would be a claim about the corpus, which the project excludes. -->
+  {#if neighbours?.results?.length}
+    <section class="elsewhere">
+      <h2 class="micro">Elsewhere in the archive</h2>
+      <p class="hint">
+        Nearest passages by embedding, best first. Nothing here is a judgement
+        about what the article is <em>about</em>.
+      </p>
+      <ol class="near">
+        {#each neighbours.results as near (near.chunk_id)}
+          <li>
+            <a class="near-head" href={near.article_href}>
+              <span class="num date">{near.sent_at.slice(0, 10)}</span>
+              <span class="near-subject">{displaySubject(near.subject)}</span>
+            </a>
+            <p class="near-excerpt">{near.excerpt}…</p>
+            <p class="hint near-meta">
+              <span class="pill info kind">{kindLabel(near.kind)}</span>
+              <span class="num">distance {near.distance.toFixed(3)}</span>
+              {#if near.more_passages > 0}
+                <span class="num"
+                  >{near.matched_passages} of this article's passages matched</span
+                >
+              {/if}
+            </p>
+          </li>
+        {/each}
+      </ol>
+    </section>
+  {/if}
 {/if}
 
 <style>
@@ -241,6 +298,55 @@
       -6px 0 0 var(--mark-bg),
       6px 0 0 var(--mark-bg);
     border-radius: 2px;
+  }
+  .elsewhere {
+    max-width: 46rem;
+    margin-top: 28px;
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+  }
+  .elsewhere h2 {
+    margin: 0 0 4px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .near {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+  }
+  .near li {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    margin-bottom: 8px;
+    background: var(--bg-raised);
+  }
+  .near-head {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .near-head:hover .near-subject {
+    color: var(--accent);
+  }
+  .near-subject {
+    font-weight: 500;
+  }
+  .near-excerpt {
+    margin: 4px 0 6px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-muted);
+  }
+  .near-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 0;
   }
   @media (max-width: 600px) {
     .head h1 {
