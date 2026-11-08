@@ -321,3 +321,29 @@ def test_min_distance_is_not_a_parameter(similar_service):
     """§6: there is no floor, so the knob is refused rather than ignored."""
     body = get_json(f"{similar_service}/article/152/similar?min_distance=0.9")
     assert len(body["results"]) == 1
+
+
+def test_a_store_that_cannot_open_is_a_503_not_a_crash(corpus):
+    """A missing wheel or an unreadable table costs the block, not the page.
+
+    Regression: `import numpy` inside the handler raised ImportError, which
+    escaped `api.similar`, closed the connection with no response, and the
+    browser suite saw `ERR_EMPTY_RESPONSE`. A feature that cannot load has to say
+    so in JSON — the article still has to render.
+    """
+    archive, _derived, index_path = corpus
+    import sqlite3
+
+    class Broken:
+        def table(self, conn=None):
+            raise RuntimeError("no vector stack in this image")
+
+    broken = similar.Space(archive.parent / "absent-lancedb", Broken())
+    conn = sqlite3.connect(f"file:{index_path}?mode=ro", uri=True)
+    try:
+        with pytest.raises(api.ApiError) as error:
+            api.similar(conn, 152, broken, limit=5)
+        assert error.value.status == 503
+        assert error.value.code == "similar_unavailable"
+    finally:
+        conn.close()

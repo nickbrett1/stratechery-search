@@ -53,6 +53,23 @@ class Neighbour:
     matched_passages: int
 
 
+def _numpy() -> Any:
+    """``numpy``, or a 503 — never an ImportError escaping as a dropped request.
+
+    The import is deliberately inside the call, like ``lancedb`` in
+    :mod:`.vector_store`: the browser suite runs this server in an image with no
+    vector stack at all, and a missing wheel must cost the *block*, not the
+    article page. An ImportError escaping a handler closes the connection with
+    no response — the client sees ERR_EMPTY_RESPONSE, which reads as a dead
+    server rather than an absent feature.
+    """
+    try:
+        import numpy
+    except ImportError as error:  # a build without the vector stack
+        raise SimilarError(f"numpy is not installed: {error}") from error
+    return numpy
+
+
 def _article_of(chunk_id: str) -> int:
     return int(chunk_id.split(":", 1)[0])
 
@@ -92,7 +109,7 @@ class Space:
     def _load(self, conn: Any = None) -> tuple[list[str], Any]:
         import time as _time
 
-        import numpy as np
+        np = _numpy()
 
         started = _time.perf_counter()
         try:
@@ -167,7 +184,7 @@ class Space:
     # -- the query -------------------------------------------------------
 
     def _scores(self, query_chunk_ids: list[str], *, exclude_article: int, conn: Any):
-        import numpy as np
+        np = _numpy()
 
         ids, matrix = self.ready(conn)
         position = {chunk_id: index for index, chunk_id in enumerate(ids)}
@@ -202,7 +219,7 @@ class Space:
         paragraph. No fold: two passages of mine matching the same article are
         two rows on purpose at this grain.
         """
-        import numpy as np
+        np = _numpy()
 
         ids, targets, rows, scores = self._scores(
             query_chunk_ids, exclude_article=exclude_article, conn=conn
@@ -241,7 +258,7 @@ class Space:
         is like this one if **one** of its passages is; the count says how much
         of it echoes.
         """
-        import numpy as np
+        np = _numpy()
 
         ids, targets, _rows, scores = self._scores(
             query_chunk_ids, exclude_article=exclude_article, conn=conn

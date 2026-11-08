@@ -19,9 +19,17 @@ const test = base.extend({
     page.on("console", (message) => {
       // `warning` is not a failure; an `error` is, and chromium reports failed
       // resource loads here too, which is how a missing asset gets caught.
-      if (message.type() === "error") {
-        failures.push(`console: ${message.text()}`);
-      }
+      if (message.type() !== "error") return;
+      const text = message.text();
+      const url = message.location()?.url ?? "";
+      // The one expected exception, and it is contractual rather than tolerated:
+      // `/article/{id}/similar` answers 503 when the process has no vector store
+      // (phase 4 §6). The app catches it, the article renders, the block is
+      // simply absent — which is the specified behaviour. Chromium logs every
+      // failed resource load as a console error, so without this the fixture
+      // corpus (which has no vectors) would fail every drill-in test.
+      if (url.includes("/similar") && text.includes("503")) return;
+      failures.push(`console: ${text}`);
     });
     await use(page);
     expect(failures, "the page logged an error while rendering").toEqual([]);
@@ -311,6 +319,50 @@ test.describe("drill-in", () => {
     );
     await page.getByRole("button", { name: /back/i }).click();
     await expect(page.locator(card)).toHaveCount(1);
+  });
+
+  test("the article offers elsewhere in the archive, when there is a store", async ({
+    page,
+  }) => {
+    // The fixture corpus ships no vectors, so `/similar` is a contractual 503
+    // there and the block is absent by design. The *template* is what a Python
+    // test cannot see — an undeclared variable in it ships green through every
+    // other gate, which is why this suite exists — so the answer is stubbed.
+    await page.route("**/article/*/similar*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          message_id: 85344,
+          grain: "article",
+          basis: { passages: 2, embed_model: "cohere/embed-v5.0" },
+          results: [
+            {
+              message_id: 152,
+              sent_at: "2026-07-15T10:07:57Z",
+              subject: "IBM Misses (Stratechery Update 7-15-2026)",
+              kind: "update",
+              distance: 0.412,
+              matched_passages: 2,
+              chunk_id: "152:0",
+              excerpt: "The aggregation theory says integration is a choice.",
+              article_href: "/article/152#c152-0",
+              more_passages: 1,
+            },
+          ],
+        }),
+      }),
+    );
+    await page.goto("/article/85344");
+
+    // The heading is fixed by copy discipline (phase 4 §7): a dated ranked list,
+    // never "related topics" or "themes".
+    await expect(
+      page.getByRole("heading", { name: "Elsewhere in the archive" }),
+    ).toBeVisible();
+    await expect(page.getByText(/distance 0\.412/)).toBeVisible();
+    await page.getByRole("link", { name: /IBM Misses/ }).click();
+    await expect(page).toHaveURL(/\/article\/152#c152-0$/);
   });
 });
 
