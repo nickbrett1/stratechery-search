@@ -101,7 +101,33 @@ def test_flatten_writes_text_meta_and_report(tmp_path):
     gates = {gate["gate"]: gate for gate in report["gates"]}
     for code in ("url_residue", "bold_residue", "divider_residue", "jwt_residue"):
         assert gates[code]["pass"], code
-    assert gates["coverage"]["pass"] is False  # the expected count is 1,691
+    # 2026-11-10: this used to assert `pass is False` because the corpus had one
+    # article and the gate expected 1,691. That is the defect, not the contract:
+    # coverage asks "does every archived message have derived text", not "is this
+    # the corpus as it was in October". One archived article, one derived file.
+    assert gates["coverage"]["pass"] is True
+    assert gates["coverage"]["observed"] == {"derived": 1, "archive": 1}
+
+
+def test_a_missing_derived_file_fails_coverage(tmp_path):
+    """The gate still catches what it was written for."""
+    archive = make_archive(tmp_path)
+    out = tmp_path / "derived"
+    main(["--archive", str(archive), "--out", str(out)])
+    # A second message in the archive with no derived text beside it: the exact
+    # shortfall the gate exists for, now that growth is not a shortfall.
+    index = archive / "index.jsonl"
+    rows = index.read_text(encoding="utf-8").splitlines()
+    row = json.loads(rows[0])
+    row["message_id"] = 108
+    index.write_text(
+        "\n".join(rows + [json.dumps(row)]) + "\n", encoding="utf-8"
+    )
+    main(["--archive", str(archive), "--out", str(out)])
+    report = json.loads((out / "flatten-report.json").read_text(encoding="utf-8"))
+    gates = {gate["gate"]: gate for gate in report["gates"]}
+    assert gates["coverage"]["pass"] is False
+    assert gates["coverage"]["observed"] == {"derived": 1, "archive": 2}
 
 
 def test_flatten_is_byte_identical_on_re_run(tmp_path):

@@ -37,14 +37,31 @@ from .notes import daily_from_month, stats_notes
 SCHEMA_VERSION = "1"
 
 #: §2.3 gate values.
+#: The corpus-wide gates. **None of these is a count of the corpus.**
+#:
+#: They used to be: ``articles: 1691``, ``chunks_min/max: 20_000-32_000``,
+#: ``images_distinct: 2415``, ``null_asset_ids: (77349, 95082)``. Every one of
+#: them was a snapshot of one build, and together they made the build refuse any
+#: corpus that had received mail — which is the one thing a search index over a
+#: live subscription has to do. Measured 2026-11-10: three new articles arrived,
+#: ``article_rows`` failed ``1691 != 1694``, and ``build()`` correctly declined to
+#: install, so the index could not be updated at all without editing constants.
+#:
+#: So the gates compare the database **against the archive it was built from**
+#: (``index_rows``, i.e. ``index.jsonl``, which the build already reads), and
+#: against invariants. That keeps what they were for — a silent shortfall, a
+#: truncated build, a gate that passes on an empty index — while letting the
+#: corpus grow. Growth is not a defect; a row count that disagrees with the
+#: archive is.
 EXPECTED = {
-    "articles": 1691,
-    "searchable_articles": 1647,
-    "chunks_min": 20_000,
-    "chunks_max": 32_000,
-    "images_distinct": 2415,
-    "images_null": 2,
-    "null_asset_ids": (77349, 95082),
+    # Chunks per searchable article: 18.2 measured across 1,694 articles. The
+    # floor is 1 rather than 8 because a *short* corpus legitimately has short
+    # articles (the fixture's are ~1,000 chars each), and because the shortfall
+    # this gate could catch is already caught exactly by `article_rows`. What it
+    # still catches is the other silent failure: a chunker that duplicated text,
+    # or a build that wrote the corpus twice.
+    "chunks_per_article_min": 1,
+    "chunks_per_article_max": 30,
     "chunk_end_tolerance": 150,
 }
 
@@ -500,13 +517,18 @@ def _evaluate(
     gates: list[dict] = []
     cur = conn.cursor()
 
+    # The archive is the expectation: one article row per message in
+    # index.jsonl, and every one of them searchable or explicitly transactional.
+    population = len(index_rows)
     articles = cur.execute("SELECT count(*) FROM articles").fetchone()[0]
     gates.append(
         _gate(
             "article_rows",
-            EXPECTED["articles"],
-            articles,
-            articles == EXPECTED["articles"],
+            {"archive": population},
+            {"rows": articles, "missing": population - articles},
+            articles == population,
+            note="the archive, not a constant: a shortfall means a derived file or"
+            " a row went missing, and growth is expected",
         )
     )
 
@@ -519,23 +541,27 @@ def _evaluate(
     gates.append(
         _gate(
             "searchable_articles",
-            {
-                "value": EXPECTED["searchable_articles"],
-                "equals": "articles - transactional",
-            },
+            "articles - transactional",
             {"value": searchable, "computed": articles - transactional},
-            searchable == EXPECTED["searchable_articles"]
-            and searchable == articles - transactional,
+            searchable == articles - transactional,
         )
     )
 
     chunk_count = cur.execute("SELECT count(*) FROM chunks").fetchone()[0]
+    low = EXPECTED["chunks_per_article_min"] * searchable
+    high = EXPECTED["chunks_per_article_max"] * searchable
     gates.append(
         _gate(
             "chunk_rows",
-            f"{EXPECTED['chunks_min']}-{EXPECTED['chunks_max']}",
-            chunk_count,
-            EXPECTED["chunks_min"] <= chunk_count <= EXPECTED["chunks_max"],
+            {
+                "per_article": f"{EXPECTED['chunks_per_article_min']}"
+                f"-{EXPECTED['chunks_per_article_max']}",
+                "articles": searchable,
+            },
+            {"rows": chunk_count, "per_article": round(chunk_count / searchable, 2)},
+            low <= chunk_count <= high,
+            note="scaled to the corpus: a constant band fails the day it grows past"
+            " it, and an empty index passes a floor",
         )
     )
 
@@ -655,13 +681,30 @@ def _evaluate(
             "SELECT message_id FROM article_images WHERE asset IS NULL ORDER BY message_id"
         ).fetchall()
     ]
+    # Derivable from the archive, so it is derived: which URLs arrived without
+    # bytes is a fact about the capture (`images[]` with no `asset`), not a
+    # property of this corpus size. The count of distinct assets is likewise what
+    # the archive says it captured.
+    derived_assets = {
+        img["asset"]
+        for row in index_rows.values()
+        for img in _image_rows(row)
+        if img["asset"]
+    }
+    derived_null_ids = sorted(
+        {
+            message_id
+            for message_id, row in index_rows.items()
+            if any(not img["asset"] for img in _image_rows(row))
+        }
+    )
     gates.append(
         _gate(
             "images",
             {
                 "rows": expected_image_rows,
-                "distinct_assets": EXPECTED["images_distinct"],
-                "null_assets": EXPECTED["images_null"],
+                "distinct_assets": len(derived_assets),
+                "no_asset": derived_null_ids,
             },
             {
                 "rows": image_rows,
@@ -670,8 +713,10 @@ def _evaluate(
                 "null_ids": null_ids,
             },
             image_rows == expected_image_rows
-            and distinct_assets == EXPECTED["images_distinct"]
-            and tuple(null_ids) == tuple(EXPECTED["null_asset_ids"]),
+            and distinct_assets == len(derived_assets)
+            and tuple(null_ids) == tuple(derived_null_ids),
+            note="every url-only reference is one the archive could not capture;"
+            " a new one is a fact to record, not a build failure",
         )
     )
 
@@ -687,7 +732,7 @@ def _evaluate(
             "stats_present",
             {
                 "singleton": 1,
-                "sum_by_year": EXPECTED["articles"],
+                "sum_by_year": articles,
                 "transactional": transactional,
             },
             {

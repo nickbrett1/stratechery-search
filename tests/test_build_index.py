@@ -16,9 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from stratechery_search import build_index
 from stratechery_search.build_index import build
-from stratechery_search.chunk import chunk_text
 from stratechery_search.flatten import main as flatten_main
 
 SENT_AT = "2026-07-15T10:07:57Z"
@@ -99,27 +97,9 @@ def built(tmp_path, monkeypatch):
         # Hold the normalised body steady so the chunk arithmetic is predictable.
         if meta["message_id"] == 152:
             (derived / "152.txt").write_text(BODY + "\n", encoding="utf-8")
-    metas = build_index.load_metas(derived)
-    expected_chunks = sum(
-        len(
-            chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8"))
-        )
-        for m in metas
-    )
-    monkeypatch.setattr(
-        build_index,
-        "EXPECTED",
-        {
-            **build_index.EXPECTED,
-            "articles": len(metas),
-            "searchable_articles": len(metas) - 1,
-            "chunks_min": expected_chunks,
-            "chunks_max": expected_chunks,
-            "images_distinct": 1,
-            "images_null": 1,
-            "null_asset_ids": (30564,),
-        },
-    )
+    # Deliberately no EXPECTED patch: the corpus-wide gates are written against
+    # the archive this build reads, so a three-article corpus installs on its own
+    # merits. That is the regression this fixture used to hide.
     out = tmp_path / "index" / "search.sqlite"
     report = build(derived, archive, out)
     return out, report
@@ -248,15 +228,27 @@ def test_chunk_text_reassembles_into_the_derived_body(built):
         conn.close()
 
 
-def test_failed_gate_does_not_install_the_index(tmp_path, monkeypatch):
+def test_failed_gate_does_not_install_the_index(tmp_path):
+    # A failing gate must leave the service on the previous index. Provoke a real
+    # shortfall — an archived message with no derived text — because the old
+    # version of this test relied on the corpus *being too small*, i.e. on the
+    # snapshot gates that made a growing corpus unbuildable (2026-11-10).
     archive = tmp_path / "archive"
     derived = tmp_path / "derived"
     _write_archive(archive)
     flatten_main(["--archive", str(archive), "--out", str(derived)])
+    # Longer text than the meta says: `chunk_coverage` compares the last chunk's
+    # end offset against `articles.chars`, so this is a real disagreement between
+    # the database and the archive-derived layer, not a missing file (which makes
+    # `build` raise rather than report — a gap recorded separately).
+    victim = sorted(derived.glob("*.txt"))[0]
+    victim.write_text(victim.read_text(encoding="utf-8") + "x " * 500, encoding="utf-8")
     out = tmp_path / "index" / "search.sqlite"
     report = build(derived, archive, out, verify_idempotent=False)
     assert report["installed"] is False
     assert not out.exists()
+    failed = {gate["gate"] for gate in report["gates"] if not gate["pass"]}
+    assert "chunk_coverage" in failed
 
 
 BY_YEAR = {

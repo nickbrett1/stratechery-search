@@ -23,7 +23,6 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from stratechery_search import build_index
-from stratechery_search.chunk import chunk_text
 from stratechery_search.flatten import main as flatten_main
 
 # Long enough to be chunked into three (TARGET_CHARS is 1,500), which is what
@@ -141,31 +140,12 @@ def build(
             target = len(path.read_text(encoding="utf-8").rstrip("\n"))
             body = body[:target].ljust(target)
         path.write_text(body + "\n", encoding="utf-8")
-    metas = build_index.load_metas(derived)
-    expected_chunks = sum(
-        len(
-            chunk_text((derived / f"{m['message_id']}.txt").read_text(encoding="utf-8"))
-        )
-        for m in metas
-    )
     index_path = root / "index" / "search.sqlite"
-    saved = build_index.EXPECTED
-    build_index.EXPECTED = {
-        **saved,
-        "articles": len(metas),
-        "searchable_articles": len(metas) - 1,
-        "chunks_min": expected_chunks,
-        "chunks_max": expected_chunks,
-        "images_distinct": 1,
-        "images_null": 1,
-        "null_asset_ids": (85344,),
-    }
-    try:
-        report = build_index.build(
-            derived, archive, index_path, verify_idempotent=False
-        )
-    finally:
-        build_index.EXPECTED = saved
+    # No EXPECTED patching: the gates compare the database against this archive
+    # (three articles, not 1,691), which is the property that makes a growing
+    # corpus buildable at all. If this call grows a patch again, the gates have
+    # regressed to snapshots.
+    report = build_index.build(derived, archive, index_path, verify_idempotent=False)
     if report["installed"] is not True:
         raise RuntimeError(f"corpus gates failed: {report['gates']}")
     return archive, derived, index_path
