@@ -46,6 +46,11 @@ const SEARCH_BOX = "Search the corpus";
 // split between them is the point (a person is not a company).
 const BROWSE_COMPANY = "Browse by company";
 const BROWSE_PEOPLE = "Browse by people";
+// The landing screen's newest-articles block.
+const LATEST = "Latest articles";
+// How many chips a browse row shows before it folds, and the number the stub
+// below is built to exceed (the real gazetteer is 38 companies, 9 people).
+const VISIBLE = 6;
 // The 2018 article in the fixture corpus, used as a stable "did this one come
 // back" probe.
 const AMAZON_TITLE = "More on Amazon";
@@ -213,6 +218,74 @@ test.describe("landing screen (nothing asked yet)", () => {
       .getByRole("button", { name: /Elon Musk/ })
       .click();
     await expect(page).toHaveURL(/entity=elon_musk/);
+  });
+
+  test("offers the newest articles as a way in", async ({ page }) => {
+    // A reader who does not know what to search for can still open what has just
+    // been published. It comes from /stats (the document this screen already
+    // fetches), so it is one round trip, and it is ordered like browse: newest
+    // first.
+    await page.goto("/");
+    const latest = page.locator(".block", { hasText: LATEST });
+    const rows = latest.locator("a.latestrow");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("IBM Misses");
+    await expect(rows.first()).toContainText("2026-07-15");
+    await expect(rows.first()).toHaveAttribute("href", "/article/152");
+    await expect(rows.nth(1)).toContainText("More on Amazon");
+
+    // The newest *message* in the fixture is the 2024 access code, which is
+    // transactional mail: offering it as "what's new" would be the reading list
+    // recommending a receipt.
+    await expect(latest).not.toContainText("access code");
+  });
+
+  test("a newest article opens from the landing screen", async ({ page }) => {
+    // The block is a way *in*, not a dead end: the row is an ordinary link, and
+    // the in-document router has to pick it up like any other.
+    await page.goto("/");
+    await page
+      .locator(".block", { hasText: LATEST })
+      .locator("a.latestrow")
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/article\/152/);
+  });
+
+  test("folds the company list until the reader asks for all of it", async ({
+    page,
+  }) => {
+    // Twelve companies, of which the row shows six: the gazetteer is 38 and
+    // rendered whole it was most of a phone screen between the reader and the
+    // year row. Nothing is lost — the expander says how many it is holding.
+    await page.route("**/stats", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.companies = Array.from({ length: 12 }, (_, index) => ({
+        entity_id: `company_${index}`,
+        name: `Company ${String(index).padStart(2, "0")}`,
+        articles: 12 - index,
+      }));
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/");
+
+    const row = page.locator(".block", { hasText: BROWSE_COMPANY });
+    const picks = row.locator("button.pick");
+    await expect(picks).toHaveCount(VISIBLE);
+
+    const more = row.getByRole("button", { name: /show all 12 companies/ });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await more.click();
+
+    await expect(picks).toHaveCount(12);
+    // The first six keep their places: expanding adds, it does not reorder.
+    await expect(picks.first()).toContainText("Company 00");
+
+    const fewer = row.getByRole("button", { name: /show fewer/ });
+    await expect(fewer).toHaveAttribute("aria-expanded", "true");
+    await fewer.click();
+    await expect(picks).toHaveCount(VISIBLE);
   });
 
   test("the search box says what it searches", async ({ page }) => {

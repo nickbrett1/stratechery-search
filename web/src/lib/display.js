@@ -56,6 +56,19 @@ export function kindLabel(kind) {
   return group ? group.label : kind;
 }
 
+// The pill colour for a kind, in the house palette only: sky for the long-form
+// interviews, green for the weekly, orange for the short updates. Shared rather
+// than copied because two components now print a kind pill (a result card and
+// the landing screen's newest-articles list) and two colour maps drift.
+export function kindTone(kind) {
+  if (kind === "interview") return "info";
+  if (kind === "weekly") return "ok";
+  // daily and update are one product under two names (see above), so they
+  // cannot carry two colours as if they were two kinds of thing.
+  if (kind === "daily" || kind === "update") return "warn";
+  return "";
+}
+
 export function groupKinds(byKind = []) {
   const seen = new Set();
   const groups = [];

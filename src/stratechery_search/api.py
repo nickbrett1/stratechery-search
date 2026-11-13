@@ -1628,6 +1628,43 @@ def similar(
     }
 
 
+#: How many of the newest articles the landing screen offers as a way in.
+#: Five: enough to be worth scanning (a single headline is a teaser that reads
+#: as stale the moment the archive moves on) and few enough that the list stays a
+#: row of links rather than a third of the screen — the complaint that produced
+#: it was that the landing screen was hard to navigate, so it must not become
+#: another block to scroll past.
+LANDING_RECENT = 5
+
+
+def recent_articles(conn: sqlite3.Connection, limit: int = LANDING_RECENT) -> list:
+    """The newest searchable articles, newest first.
+
+    Ordered the way ``_browse`` orders: ``sent_at`` descending, then
+    ``message_id``, because two updates can share a date and the id makes the
+    tie-break deterministic instead of whatever SQLite happened to return.
+
+    ``is_transactional = 0`` for the same reason search and browse exclude those
+    rows: an access code is mail, not something to offer as reading.
+    """
+    return [
+        {
+            "message_id": message_id,
+            "subject": subject,
+            "sent_at": sent_at,
+            "kind": kind,
+            "article_href": f"/article/{message_id}",
+        }
+        for message_id, subject, sent_at, kind in conn.execute(
+            "SELECT message_id, subject, sent_at, kind FROM articles"
+            " WHERE is_transactional = 0"
+            " ORDER BY sent_at DESC, message_id DESC"
+            " LIMIT ?",
+            (limit,),
+        )
+    ]
+
+
 def stats(conn: sqlite3.Connection, facet_index: Any = None) -> dict:
     row = conn.execute(
         "SELECT articles, searchable_articles, chunks, first_sent_at, last_sent_at,"
@@ -1691,6 +1728,12 @@ def stats(conn: sqlite3.Connection, facet_index: Any = None) -> dict:
         "chunks": chunks,
         "first": first_sent_at,
         "last": last_sent_at,
+        # The way in that was missing: "what is new" is a question a reader asks
+        # before they know what to search for. It rides on /stats rather than
+        # owning an endpoint because the landing screen already fetches this
+        # document — a second request would be a second round trip on a phone for
+        # five rows of text the same connection can read for free.
+        "recent": recent_articles(conn),
         "by_year": by_year,
         "by_kind": [
             {"kind": kind, "articles": count}

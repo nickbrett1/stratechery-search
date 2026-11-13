@@ -1,5 +1,10 @@
 <script>
-  import { articleHref, displaySubject, kindLabel } from "../lib/display.js";
+  import {
+    articleHref,
+    displaySubject,
+    kindLabel,
+    kindTone,
+  } from "../lib/display.js";
 
   // The snippet arrives with <mark>…</mark> from SQLite's snippet(). It is article
   // text, so everything else is escaped before the marks go back in: the index
@@ -36,24 +41,11 @@
 
   const date = $derived(result.sent_at.slice(0, 10));
   const ordinal = (chunkId) => Number(chunkId.split(":")[1]) + 1;
-
-  // Kind tints come from the house palette only: sky for the long-form
-  // interviews, green for the weekly, orange for the short updates. Nothing here
-  // introduces a colour the dashboard does not already use.
-  const TONE = {
-    interview: "info",
-    weekly: "ok",
-    // daily and update are one product under two names (see lib/display.js), so
-    // they cannot carry two colours as if they were two kinds of thing.
-    update: "warn",
-    daily: "warn",
-    other: "",
-  };
 </script>
 
 <article class="card result">
   <header>
-    <span class="pill kind {TONE[result.kind] ?? ''}"
+    <span class="pill kind {kindTone(result.kind)}"
       >{kindLabel(result.kind)}</span
     >
     <span class="date num">{date}</span>

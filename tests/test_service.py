@@ -589,6 +589,27 @@ def test_stats_offers_the_searchable_slices_the_landing_screen_builds_chips_from
     assert searchable["daily_from"] is None
 
 
+def test_stats_offers_the_newest_articles_newest_first(service):
+    # The landing screen's "latest" block: what has just been published, ordered
+    # the way browse orders (sent_at, then message_id). It rides on /stats so the
+    # landing screen pays one round trip for it, which makes this shape a
+    # contract that the frontend is written against.
+    _status, body = get(f"{service}/stats")
+    recent = body["recent"]
+    assert set(recent[0]) == {
+        "message_id",
+        "subject",
+        "sent_at",
+        "kind",
+        "article_href",
+    }
+    assert [row["message_id"] for row in recent] == [152, 85344]
+    assert recent[0]["article_href"] == "/article/152"
+    # The fixture's newest *message* is the 2024 access code, which is
+    # transactional mail: a block called "latest articles" must not offer it.
+    assert all("access code" not in row["subject"] for row in recent)
+
+
 def test_asset_is_served_with_an_image_content_type(service):
     with urllib.request.urlopen(
         f"{service}/asset/aaaa0000.png", timeout=10
