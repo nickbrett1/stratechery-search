@@ -211,15 +211,6 @@
     </p>
   </noscript>
 
-  <!-- One footer for the app, in the shell's slot: the corpus page used to print
-       its own line of links, which would now sit above a second footer strip. -->
-  {#snippet footer()}
-    <span class="micro">
-      <a href="/">← search</a> · <a href="/healthz">/healthz</a> ·
-      <a href="/stats">/stats</a>
-    </span>
-  {/snippet}
-
   {#if articleMatch}
     <ArticlePage messageId={articleMatch[1]} />
   {:else if path === "/stats"}
@@ -230,6 +221,16 @@
 </AppShell>
 
 <style>
+  /* No footer. The shell always draws one (1.7.0 has no "no footer" prop) and
+     this app has nothing to put in it: the navigation is the header's, and a
+     second set of links at the bottom only duplicated it — its /stats link
+     pointed at the page you were already on and, being plain <a href> rather
+     than go(), made the browser reload to get there. Hide the strip rather than
+     fill it, and drop this rule when the block grows the prop. */
+  :global(.shell > footer.footer) {
+    display: none;
+  }
+
   /* The tile in favicon.svg is the ground colour, which is also the header, so
      without a hairline the mark floats as a bare magnifier. One ring makes it
      read as the app icon it is. */
@@ -279,12 +280,6 @@
   }
   .notice {
     margin: 14px 0 0;
-  }
-  .micro a {
-    color: var(--ink-faint);
-  }
-  .micro a:hover {
-    color: var(--accent);
   }
   /* Narrowest phones: the word "back" goes, the arrow and the 44px target stay.
      The accessible name does not, because it is on aria-label. */
