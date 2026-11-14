@@ -523,8 +523,8 @@
   }
   .chip.on {
     color: var(--accent);
-    border-color: rgba(125, 211, 252, 0.45);
-    background: rgba(125, 211, 252, 0.1);
+    border-color: var(--accent-line-strong);
+    background: var(--accent-soft);
   }
   .chip .x {
     color: var(--ink-faint);
@@ -613,7 +613,7 @@
       z-index: 5;
       margin: 0 -12px;
       padding: 7px 12px;
-      background: rgba(15, 23, 42, 0.93);
+      background: var(--bg-overlay);
       backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--line);
     }

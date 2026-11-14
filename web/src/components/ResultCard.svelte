@@ -129,7 +129,7 @@
     color: var(--ink);
   }
   .subject:hover {
-    color: #fff;
+    color: var(--ink-strong);
     text-decoration: none;
   }
   .snippet {
@@ -182,7 +182,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   .more:hover {
-    color: #fff;
+    color: var(--ink-strong);
   }
   .chev {
     font-size: 9px;

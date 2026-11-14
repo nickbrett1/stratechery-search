@@ -262,8 +262,8 @@
   }
   .back:hover,
   .back:focus-visible {
-    color: #fff;
-    border-color: rgba(125, 211, 252, 0.45);
+    color: var(--ink-strong);
+    border-color: var(--accent-line);
     background: var(--bg-hover);
     outline: none;
   }

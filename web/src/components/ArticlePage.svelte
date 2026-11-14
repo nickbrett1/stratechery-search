@@ -240,7 +240,7 @@
     font-weight: 600;
     letter-spacing: -0.01em;
     margin: 0 0 10px;
-    color: #fff;
+    color: var(--ink-strong);
     max-width: 44rem;
   }
   .facts {
@@ -290,7 +290,7 @@
   }
   .unmirrored:hover {
     color: var(--accent);
-    border-color: rgba(125, 211, 252, 0.4);
+    border-color: var(--accent-line);
     text-decoration: none;
   }
   /* Reading column: 15px is a size up from the 13px UI text on purpose — this

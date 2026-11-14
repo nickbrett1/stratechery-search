@@ -149,7 +149,7 @@
     font-weight: 600;
     letter-spacing: -0.01em;
     margin: 0 0 4px;
-    color: #fff;
+    color: var(--ink-strong);
   }
   .sub {
     margin: 0 0 14px;

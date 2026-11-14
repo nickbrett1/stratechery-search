@@ -409,7 +409,7 @@
   }
   .more:hover,
   .more:focus-visible {
-    color: #fff;
+    color: var(--ink-strong);
   }
   .chev {
     font-size: 9px;
@@ -481,13 +481,13 @@
   }
   .pick:hover,
   .pick:focus-visible {
-    border-color: rgba(125, 211, 252, 0.4);
-    color: #fff;
+    border-color: var(--accent-line);
+    color: var(--ink-strong);
   }
   .pick.on {
-    border-color: rgba(125, 211, 252, 0.55);
+    border-color: var(--accent-line-strong);
     background: var(--accent-soft);
-    color: #fff;
+    color: var(--ink-strong);
   }
   .pick.on .n {
     color: var(--accent);

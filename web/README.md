@@ -53,13 +53,41 @@ Nothing in this directory owns a colour, a pill or a card.
 ```bash
 # The base is pinned by version, and the version is a path segment: registry
 # items are immutable, so a bump is a deliberate edit with a diff.
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.7.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.15.0 \
   npx shadcn-svelte@1.8.1 add theme --yes --overwrite
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.7.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.15.0 \
   npx shadcn-svelte@1.8.1 add app-shell stat-strip result-list filter-panel \
     empty-state status-view detail-panel burst-timeline request-form \
     --yes --overwrite
 ```
+
+The pin lives in one place, `.nb-registry.json`, and `scripts/check-nb-blocks.mjs`
+fails the build if the copied files stop matching that release. Two commands,
+because they answer different questions:
+
+```bash
+export COMPONENTS_REGISTRY_URL="$(doppler secrets get COMPONENTS_REGISTRY_URL \
+  --project common --config dev --plain)"
+node scripts/check-nb-blocks.mjs                                  # the copies are the release
+node scripts/check-tokens.mjs web/src --theme web/src/app.css     # no component names a value
+```
+
+The second is why this app is on 1.15.0. This is the app the theme was lifted
+from, so it was full of literals that were _roles the theme had not named yet_:
+`#fff` as a hover ink, `rgba(125, 211, 252, .4/.45/.55)` as an accent border,
+`rgba(15, 23, 42, .93)` under a sticky row. Those are now `--ink-strong`,
+`--accent-line` / `--accent-line-strong` and `--bg-overlay`, and every rule here
+names the role. The fix went upstream first: a literal replaced with a local
+token would have been the same defect wearing a variable's name.
+
+Re-running `add theme --overwrite` also showed that this file had been a
+_snapshot_ of the theme rather than the theme: it was missing `.lede`,
+`.sub-lede`, `.muted`, `.quiet` and `.notice.accent`, so `<button class="quiet">`
+— the "clear" on the start screen — was rendering at body ink. `src/app.css` is
+now generated from the item itself (its `cssVars` as the `@theme inline` block,
+its `css` object as the rules, one rule per selector), which is also what keeps
+a future merge able to match selectors instead of appending a second copy of the
+theme at the foot of the file.
 
 `add theme` merges the item's `cssVars` and `css` into `src/app.css`, which is
 where `--bg`, `.card`, `.pill`, `.micro`, `.seg` and the rest now come from;

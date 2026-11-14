@@ -50,6 +50,17 @@ steps:
         export COMPONENTS_REGISTRY_URL="$$(doppler secrets get COMPONENTS_REGISTRY_URL --project common --config dev --plain)"
         echo "registry: $$COMPONENTS_REGISTRY_URL"
         node scripts/check-nb-blocks.mjs
+      - |
+        # A block names a role, never a value. The vendored ones obey this by
+        # construction -- they are the registry's bytes -- so what this catches
+        # is *this* repo's own components, where a colour gets written down
+        # because the role it wanted did not exist yet. `--theme` is the file the
+        # CLI merged the tokens into: the one place a value is allowed, because
+        # a table of tokens is made of values by definition.
+        #
+        # No Doppler here on purpose: nothing is fetched, so this check is a
+        # function of the commit.
+        node scripts/check-tokens.mjs web/src --theme web/src/app.css
       - cd web
       - |
         PINNED="$$(node -p "require('./package.json').packageManager || ''" | sed -e 's/^npm@//')"
