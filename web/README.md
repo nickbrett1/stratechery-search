@@ -53,9 +53,9 @@ Nothing in this directory owns a colour, a pill or a card.
 ```bash
 # The base is pinned by version, and the version is a path segment: registry
 # items are immutable, so a bump is a deliberate edit with a diff.
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.5.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.6.1 \
   npx shadcn-svelte@1.8.1 add theme --yes --overwrite
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.5.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.6.1 \
   npx shadcn-svelte@1.8.1 add app-shell stat-strip result-list filter-panel \
     empty-state status-view detail-panel burst-timeline request-form \
     --yes --overwrite
@@ -75,20 +75,26 @@ prints the question and **exits 0 having written nothing**.
 
 ### Which screens are the blocks
 
-| Screen             | Blocks                                                    |
-| ------------------ | --------------------------------------------------------- |
-| `/stats`           | `StatStrip` (four KPIs), `StatusView` (one lane per kind) |
-| `/article/{id}`    | `ResultList` for "Elsewhere in the archive"               |
-| results, zero rows | `EmptyState`, cause-aware (filters vs query)              |
-| `/` results tally  | `StatStrip`                                               |
+| Screen             | Blocks                                                                 |
+| ------------------ | ---------------------------------------------------------------------- |
+| the whole frame    | `AppShell` — `mark` (the favicon), `actions` (`search \| corpus`), `back` (this app's own button, `history.back()`), `footer`, `titleTag="div"` |
+| `/stats`           | `StatStrip` (four KPIs), `StatusView` (one lane per kind), `BurstTimeline` for the year chart (`showValues` + a prose `caption`) |
+| `/article/{id}`    | `ResultList` for "Elsewhere in the archive", its own title as an `h2`   |
+| results            | `ResultList` — one card, ranked rows, hairline between, `ResultCard` in the `row` slot |
+| results, zero rows | `EmptyState`, cause-aware (filters vs query)                            |
+| `/` results tally  | `StatStrip`                                                             |
 
-Still local, and deliberately so: the top bar (`AppShell` has no slot for the
-search/corpus nav), the result cards (`ResultList` rows carry a title, a pill,
-meta and one snippet — not highlighted passages with a fold), the facet panel
-(`FilterPanel` expects a facet shape this API does not emit), and the per-year
-chart (`BurstTimeline` models time buckets as a vertical sparkline and hard-codes
-its "recent bursts" caption). Those four are the block changes that would be
-needed before the conversion can finish — see the note in `ui-registry`.
+Still local, and deliberately so: the facet panel. `FilterPanel` renders a
+checkbox list per facet, and a year here is a from/to **range**, single-select,
+drawn over a histogram — a checkbox list can express 2019 *and* 2021, which the
+API cannot query. That is an interaction-model gap, not a shape one, and it is
+the one item on the registry's list that has not been built.
+
+Two rules about `src/lib/components/nb/`: it is generated, so it is in
+`.prettierignore` (prettier rewriting it would put a diff on every install, and
+pinning a version only means something if the file is what was published), and
+a change to one of those files belongs upstream in `ui-registry` as a new
+version — never here.
 
 ### The rendered check
 
