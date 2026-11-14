@@ -177,3 +177,31 @@ test("zero results advise on the cause, not on the symptom", async ({
   // A query that matched nothing is not a filter problem: no clear button.
   await expect(empty.getByRole("button")).toHaveCount(0);
 });
+
+test("the app is inside the shell, and the shell is not the page's heading", async ({
+  page,
+}) => {
+  await stub(page);
+  await page.goto("/article/152");
+
+  // AppShell, not a bespoke header: the bar, its 68rem inner and its slots are
+  // the block's, and the back control is the app's own button handed into the
+  // `back` slot -- a link would push an entry where history.back() pops one.
+  const bar = page.locator(".topbar .topbar-inner");
+  await expect(bar).toBeVisible();
+  await expect(bar.locator(".mark img")).toBeVisible();
+  await expect(bar.getByRole("button", { name: /back/i })).toHaveCount(1);
+  await expect(bar.locator("a.pill.back")).toHaveCount(0);
+
+  // `titleTag="div"`: the wordmark is the product's name, and the article's
+  // subject is the one h1 on the page. Two h1s would be a document outline with
+  // two things claiming to be the same thing.
+  await expect(page.locator(".wordmark")).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(page.locator("h1.wordmark")).toHaveCount(0);
+
+  // The bar is one row: the wordmark truncates rather than wrapping the sticky
+  // header into two, and the nav is not squeezed into a second row either.
+  const barBox = await page.locator(".topbar").boundingBox();
+  expect(barBox.height).toBeLessThan(70);
+});

@@ -6,7 +6,13 @@
    * prose body container. Includes a history-back button so the consumer
    * needs no navigation state. Lifted from stratechery-search and data-download.
    */
-  let { title = "", pill, meta = [], onback, children } = $props();
+  let {
+    title = "",
+    pill,
+    meta = [],
+    onback,
+    children,
+  } = $props();
 
   function handleBack() {
     if (onback) {

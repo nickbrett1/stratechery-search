@@ -36,7 +36,10 @@ const test = base.extend({
   },
 });
 
-const card = ".card.result";
+// A result is a *row* of the results card now, not a card of its own: the block
+// draws one card, ranks the rows and rules between them. The selector is the
+// block's, which is the point of consuming it -- the app does not own that name.
+const card = ".result-row";
 // A browse card has no matched passage to point at, so its footer is the whole
 // affordance ("read →"), asserted by name so a regression to "passage …" is a
 // failure rather than a diff nobody reads.
@@ -615,7 +618,7 @@ test.describe("corpus page", () => {
     // less". This fixture is two updates eleven years apart, so it cannot claim
     // that boundary honestly and falls back to the plain line — the "March 2018"
     // answer is pinned in tests/test_build_index.py, which has the real shape.
-    await expect(page.locator(".card.chart .note")).toHaveText(
+    await expect(page.locator(".timeline-wrap .chart-note")).toHaveText(
       "One bar per published year.",
     );
   });

@@ -3,6 +3,7 @@
   import { remember } from "../lib/recent.js";
   import Facets from "./Facets.svelte";
   import ResultCard from "./ResultCard.svelte";
+  import ResultList from "../lib/components/nb/ResultList.svelte";
   import EmptyState from "../lib/components/nb/EmptyState.svelte";
   import StatStrip from "../lib/components/nb/StatStrip.svelte";
   import StartingPoint from "./StartingPoint.svelte";
@@ -410,17 +411,26 @@
     <section class="results" class:loading>
       {#if response}
         <StatStrip stats={tally} />
-        <div class="cards">
-          {#each response.results as result (result.chunk_id)}
-            <ResultCard
-              {result}
-              passages={result.more_passages ?? []}
-              browse={response.browse ?? false}
-              query={query.q}
-            />
-          {/each}
-        </div>
-        {#if response.results.length === 0}
+        <!-- One card, ranked rows, hairlines between them — the block's shape,
+             with this app's row in the `row` slot. `initialCount` is the whole
+             page because the pager below is the fold: a second "show N more"
+             inside a page that already ends in "0–10 of 1,691" would be two
+             different answers to the same question. -->
+        {#if response.results.length}
+          <ResultList
+            items={response.results}
+            initialCount={response.results.length}
+          >
+            {#snippet row(result)}
+              <ResultCard
+                {result}
+                passages={result.more_passages ?? []}
+                browse={response.browse ?? false}
+                query={query.q}
+              />
+            {/snippet}
+          </ResultList>
+        {:else}
           <!-- Advice has to match the cause: a filter that excludes everything is
              not fixed by typing fewer words, and a range with nothing in it is
              not a query at all. The block is the same one the registry
@@ -598,12 +608,6 @@
   }
   .results.loading {
     opacity: 0.55;
-  }
-  .cards {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 10px;
   }
   .expansion {
     margin: 0 2px;

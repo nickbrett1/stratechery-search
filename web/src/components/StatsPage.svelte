@@ -1,6 +1,7 @@
 <script>
   import { stats } from "../lib/api.js";
   import { groupKinds } from "../lib/display.js";
+  import BurstTimeline from "../lib/components/nb/BurstTimeline.svelte";
   import StatStrip from "../lib/components/nb/StatStrip.svelte";
   import StatusView from "../lib/components/nb/StatusView.svelte";
 
@@ -65,8 +66,15 @@
     },
   ]);
 
-  const maxYear = $derived(
-    Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles)),
+  // The year chart is the house block, with two props added for exactly this
+  // page: `showValues`, because a bar table prints its figures rather than
+  // hiding them in a tooltip, and `caption`, because the caveat below is a
+  // sentence and the block's `chartLabel` is a 10px uppercase micro label.
+  const years = $derived(
+    (data?.by_year ?? []).map((bucket) => ({
+      label: String(bucket.year),
+      count: bucket.articles,
+    })),
   );
 
   // The per-year chart has one honest caveat and it belongs on the chart, not in
@@ -111,42 +119,28 @@
     <p class="notice warn"><b>{note.year}</b> — {note.message}</p>
   {/each}
 
-  <div class="card chart">
-    <h3>Articles per year</h3>
-    <div class="note hint">
+  <BurstTimeline
+    title="Articles per year"
+    chartLabel=""
+    orientation="horizontal"
+    showValues
+    intervals={years}
+  >
+    {#snippet caption()}
       {#if dailyFrom}
         Daily updates reach this archive from {dailyFrom}; earlier bars are the
         weekly and free articles, not a quieter year.
       {:else}
         One bar per published year.
       {/if}
-    </div>
-    <div class="years">
-      {#each data.by_year as bucket (bucket.year)}
-        <div class="row">
-          <span class="label num">{bucket.year}</span>
-          <span class="track"
-            ><span
-              class="bar"
-              style="width: {Math.round((bucket.articles / maxYear) * 100)}%"
-            ></span></span
-          >
-          <span class="count num">{bucket.articles}</span>
-        </div>
-      {/each}
-    </div>
-  </div>
+    {/snippet}
+  </BurstTimeline>
 
   <!-- One list, not the old two. The second was "By sender", which is three
        @stratechery.com addresses over 1,691 articles: a breakdown of the
        newsletter plumbing, not of the writing. By kind is the one a reader can
        act on. -->
   <StatusView cards={kindCards} />
-
-  <p class="hint footer">
-    <a href="/">← search</a> · <a href="/healthz">/healthz</a> ·
-    <a href="/stats">/stats</a>
-  </p>
 {/if}
 
 <style>
@@ -160,55 +154,7 @@
   .sub {
     margin: 0 0 14px;
   }
-  .chart {
-    padding: 10px 12px 8px;
-    margin: 12px 0;
-  }
-  .chart h3 {
-    font-size: 12px;
-    font-weight: 600;
-    margin: 0 0 2px;
-    color: #f1f5f9;
-  }
-  .chart .note {
-    margin: 0 0 8px;
-  }
-  .years {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-width: 36rem;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: 2.6rem 1fr 2.4rem;
-    align-items: center;
-    gap: 8px;
-    font-size: 11.5px;
-  }
-  .label {
-    color: var(--ink-muted);
-  }
-  .track {
-    height: 9px;
-    background: var(--bg-sunken);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .bar {
-    display: block;
-    height: 100%;
-    background: rgba(125, 211, 252, 0.55);
-    min-width: 1px;
-  }
-  .count {
-    text-align: right;
-    color: var(--ink-dim);
-  }
   .notice {
     margin: 10px 0;
-  }
-  .footer {
-    margin-top: 18px;
   }
 </style>

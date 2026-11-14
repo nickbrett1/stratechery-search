@@ -5,8 +5,25 @@
    * Desktop: card panel with grouped checkboxes and counts.
    * Mobile (<600px): chip row that opens a slide-over / bottom sheet so
    * filters remain usable on small screens without taking over the document.
+   *
+   * `adaptFacets` (1.4.0): the panel still *renders* one shape --
+   * `[{ key, label, options: [{ value, label, count }] }]` -- but an API rarely
+   * emits it. stratechery-search's endpoint returns `by_year` / `by_kind` /
+   * `by_entity` maps of counts, so adopting the block meant reshaping the
+   * response in the page and throwing that away on every render. Hand the raw
+   * payload to `facets` and a mapper to `adaptFacets`, and the panel owns the
+   * conversion. Kept as a prop rather than a second accepted shape so the
+   * contract stays one shape with one place that deviates from it.
    */
-  let { facets = [], selected = {}, onchange, onclear } = $props();
+  let {
+    facets = [],
+    selected = {},
+    onchange,
+    onclear,
+    adaptFacets,
+  } = $props();
+
+  const groups = $derived(adaptFacets ? adaptFacets(facets) : facets);
 
   let mobileOpen = $state(false);
 
@@ -60,11 +77,7 @@
       </div>
       <div class="panel-actions">
         {#if activeCount > 0}
-          <button
-            type="button"
-            class="btn text-btn"
-            onclick={() => onclear?.()}
-          >
+          <button type="button" class="btn text-btn" onclick={() => onclear?.()}>
             Clear
           </button>
         {/if}
@@ -79,7 +92,7 @@
       </div>
     </div>
 
-    {#each facets as facet}
+    {#each groups as facet}
       <div class="facet-group">
         <div class="facet-label micro">{facet.label}</div>
         <div class="facet-options">

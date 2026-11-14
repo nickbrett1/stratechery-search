@@ -201,11 +201,16 @@
         Nearest passages by embedding, best first. Nothing here is a judgement
         about what the article is <em>about</em>.
       </p>
-      <!-- The heading is the page's, not the block's: ResultList's own title is
-           a label, and a section title that is not a heading breaks the document
-           outline (and the suite asserts the heading role). -->
-      <h2 class="section-title">Elsewhere in the archive</h2>
-      <ResultList items={nearItems} initialCount={5} />
+      <!-- `titleTag` puts the block's own title in the outline as an h2, which
+           is why the page does not render the heading itself: a section title
+           outside the block and the block's untitled list were two halves of one
+           thing, and the block already prints the count beside it. -->
+      <ResultList
+        title="Elsewhere in the archive"
+        titleTag="h2"
+        items={nearItems}
+        initialCount={5}
+      />
     </section>
   {/if}
 {/if}

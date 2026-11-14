@@ -43,7 +43,11 @@
   const ordinal = (chunkId) => Number(chunkId.split(":")[1]) + 1;
 </script>
 
-<article class="card result">
+<!-- The card is the list's, not the row's: the block draws one card and puts a
+     hairline between rows, so N results read as one ranked list rather than as N
+     floating boxes. This renders the *body* of a row, including the rank the
+     block prints to its left. -->
+<div class="result">
   <header>
     <span class="pill kind {kindTone(result.kind)}"
       >{kindLabel(result.kind)}</span
@@ -98,18 +102,11 @@
       {/each}
     {/if}
   {/if}
-</article>
+</div>
 
 <style>
   .result {
-    padding: 9px 11px 8px;
-    transition:
-      background 120ms ease,
-      border-color 120ms ease;
-  }
-  .result:hover {
-    background: var(--bg-hover);
-    border-color: var(--line-strong);
+    display: block;
   }
   header {
     display: flex;

@@ -53,9 +53,9 @@ Nothing in this directory owns a colour, a pill or a card.
 ```bash
 # The base is pinned by version, and the version is a path segment: registry
 # items are immutable, so a bump is a deliberate edit with a diff.
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.3.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.5.0 \
   npx shadcn-svelte@1.8.1 add theme --yes --overwrite
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.3.0 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.5.0 \
   npx shadcn-svelte@1.8.1 add app-shell stat-strip result-list filter-panel \
     empty-state status-view detail-panel burst-timeline request-form \
     --yes --overwrite

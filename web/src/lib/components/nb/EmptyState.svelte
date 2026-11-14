@@ -6,7 +6,12 @@
    * Filters button) from "no results for search phrase" (suggests fewer words),
    * and generic empty states. Lifted from stratechery-search.
    */
-  let { cause = "empty", query = "", onclear, customMessage = "" } = $props();
+  let {
+    cause = "empty",
+    query = "",
+    onclear,
+    customMessage = "",
+  } = $props();
 </script>
 
 <div class="card empty-state">
