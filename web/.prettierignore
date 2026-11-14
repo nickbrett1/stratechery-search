@@ -4,3 +4,7 @@ package-lock.json
 coverage/
 test-results/
 playwright-report/
+# Installed registry blocks: published bytes, not this repo's source. Prettier
+# rewriting them would mean every `shadcn add` shows a diff -- and the whole
+# point of pinning a version is that the file is exactly what was published.
+src/lib/components/nb/
