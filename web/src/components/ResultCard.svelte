@@ -149,9 +149,6 @@
     color: var(--ink);
     text-decoration: none;
   }
-  a.snippet:hover mark {
-    color: var(--ink);
-  }
   footer {
     display: flex;
     gap: 12px;
