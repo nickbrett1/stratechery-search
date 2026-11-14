@@ -201,11 +201,11 @@
         Nearest passages by embedding, best first. Nothing here is a judgement
         about what the article is <em>about</em>.
       </p>
-      <ResultList
-        title="Elsewhere in the archive"
-        items={nearItems}
-        initialCount={5}
-      />
+      <!-- The heading is the page's, not the block's: ResultList's own title is
+           a label, and a section title that is not a heading breaks the document
+           outline (and the suite asserts the heading role). -->
+      <h2 class="section-title">Elsewhere in the archive</h2>
+      <ResultList items={nearItems} initialCount={5} />
     </section>
   {/if}
 {/if}
