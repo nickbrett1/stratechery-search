@@ -376,12 +376,12 @@ test.describe("searching", () => {
     });
     await page.goto("/?q=installed+base");
 
-    const section = (title) =>
-      page.locator(".facets section", {
-        has: page.getByRole("heading", { name: title }),
-      });
+    // One group per dimension in the block; the label is a `.facet-label` span,
+    // not a heading, so the group is found by its text and read by its options.
+    const group = (title) =>
+      page.locator(".facet-group").filter({ hasText: title });
     const labels = async (title) =>
-      section(title).locator("button span:first-child").allTextContents();
+      group(title).locator(".option-label").allTextContents();
 
     expect(await labels("Company")).toEqual(["Apple", "IBM"]);
     expect(await labels("People")).toEqual(["Elon Musk", "Jeff Bezos"]);

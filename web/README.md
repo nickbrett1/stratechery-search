@@ -53,9 +53,9 @@ Nothing in this directory owns a colour, a pill or a card.
 ```bash
 # The base is pinned by version, and the version is a path segment: registry
 # items are immutable, so a bump is a deliberate edit with a diff.
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.6.1 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.7.0 \
   npx shadcn-svelte@1.8.1 add theme --yes --overwrite
-COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.6.1 \
+COMPONENTS_REGISTRY_URL=http://ryzen:3012/r/v1.7.0 \
   npx shadcn-svelte@1.8.1 add app-shell stat-strip result-list filter-panel \
     empty-state status-view detail-panel burst-timeline request-form \
     --yes --overwrite
@@ -75,20 +75,28 @@ prints the question and **exits 0 having written nothing**.
 
 ### Which screens are the blocks
 
-| Screen             | Blocks                                                                 |
-| ------------------ | ---------------------------------------------------------------------- |
+| Screen             | Blocks                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | the whole frame    | `AppShell` — `mark` (the favicon), `actions` (`search \| corpus`), `back` (this app's own button, `history.back()`), `footer`, `titleTag="div"` |
-| `/stats`           | `StatStrip` (four KPIs), `StatusView` (one lane per kind), `BurstTimeline` for the year chart (`showValues` + a prose `caption`) |
-| `/article/{id}`    | `ResultList` for "Elsewhere in the archive", its own title as an `h2`   |
-| results            | `ResultList` — one card, ranked rows, hairline between, `ResultCard` in the `row` slot |
-| results, zero rows | `EmptyState`, cause-aware (filters vs query)                            |
-| `/` results tally  | `StatStrip`                                                             |
+| `/stats`           | `StatStrip` (four KPIs), `StatusView` (one lane per kind), `BurstTimeline` for the year chart (`showValues` + a prose `caption`)                |
+| `/article/{id}`    | `ResultList` for "Elsewhere in the archive", its own title as an `h2`                                                                           |
+| results            | `ResultList` — one card, ranked rows, hairline between, `ResultCard` in the `row` slot                                                          |
+| results, zero rows | `EmptyState`, cause-aware (filters vs query)                                                                                                    |
+| `/` results tally  | `StatStrip`                                                                                                                                     |
+| filters            | `FilterPanel` — the year facet as `mode: "single"` + `layout: "bars"`, kind/company/people as checkbox sets, images as one choice from two      |
 
-Still local, and deliberately so: the facet panel. `FilterPanel` renders a
-checkbox list per facet, and a year here is a from/to **range**, single-select,
-drawn over a histogram — a checkbox list can express 2019 *and* 2021, which the
-API cannot query. That is an interaction-model gap, not a shape one, and it is
-the one item on the registry's list that has not been built.
+Nothing in this directory is a locally built layout any more. The last holdout
+was the facet panel, and the reason it held out was an interaction-model gap, not
+a shape one: a year here is a from/to **range**, and a checkbox list can express
+2019 _and_ 2021, which the API cannot query. Registry 1.7.0 closed it inside the
+block (`mode: "single"` renders radios, selecting replaces, clicking the active
+one clears the range) and added `layout: "bars"` for the histogram, so the panel
+moved in without this app teaching the block about years.
+
+What stays local is the _translation_, in `src/lib/facets.js`: the API's
+`by_year` / `by_kind` / `by_entity` / `has_images` payload becomes the panel's
+one shape, and the panel's selection becomes the `from`/`to`/`kind`/`entity`/
+`has_images` query this app routes on. Two shapes, one place that knows both.
 
 Two rules about `src/lib/components/nb/`: it is generated, so it is in
 `.prettierignore` (prettier rewriting it would put a diff on every install, and

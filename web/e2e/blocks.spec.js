@@ -205,3 +205,64 @@ test("the app is inside the shell, and the shell is not the page's heading", asy
   const barBox = await page.locator(".topbar").boundingBox();
   expect(barBox.height).toBeLessThan(70);
 });
+
+test("the year facet is one choice from N, drawn as a histogram", async ({
+  page,
+}) => {
+  // The last piece that was not a block. A year range is not a set of
+  // checkboxes: 1.7.0's `mode: "single"` renders radios, selecting replaces,
+  // and clicking the active one clears the range — and `layout: "bars"` draws
+  // each year's count behind it, so the archive's thin start is visible before
+  // the click.
+  const facets = {
+    by_year: [
+      { year: 2018, articles: 11, count: 120 },
+      { year: 2019, articles: 92, count: 480 },
+    ],
+    by_kind: [{ kind: "daily", articles: 1058, count: 9000 }],
+  };
+  await page.route("**/search**", (route) =>
+    route.request().resourceType() === "fetch"
+      ? route.fulfill({
+          json: { ...emptySearch, facets, query: { q: "ibm", expansions: [] } },
+        })
+      : route.fallback(),
+  );
+  await page.goto("/?q=ibm");
+
+  const group = (title) =>
+    page.locator(".facet-group").filter({ hasText: title });
+  const year = group("Year");
+
+  // Radios, all in one group, so the control says what it does.
+  const radios = year.locator('input[type="radio"]');
+  await expect(radios).toHaveCount(2);
+  const names = await radios.evaluateAll((all) =>
+    all.map((input) => input.name),
+  );
+  expect(new Set(names).size).toBe(1);
+
+  // A histogram, not a number at the end of a row: 120 against 480 is a
+  // quarter-width bar against a full one.
+  const widths = await year
+    .locator(".option-bar")
+    .evaluateAll((bars) =>
+      bars.map((bar) => parseFloat(getComputedStyle(bar).width)),
+    );
+  expect(widths[1]).toBeGreaterThan(0);
+  expect(widths[0] / widths[1]).toBeCloseTo(0.25, 1);
+
+  // Kind is still a set: one checkbox per group, more than one can be on.
+  await expect(group("Kind").locator('input[type="checkbox"]')).toHaveCount(1);
+
+  await year.locator(".facet-option").filter({ hasText: "2019" }).click();
+  await expect(page).toHaveURL(/from=2019-01-01/);
+  await expect(page).toHaveURL(/to=2019-12-31/);
+  await expect(radios.nth(1)).toBeChecked();
+
+  // The way back. A single-select facet whose only exit is "clear all" would
+  // throw every other facet away with it.
+  await year.locator(".facet-option").filter({ hasText: "2019" }).click();
+  await expect(page).not.toHaveURL(/from=/);
+  await expect(radios.nth(1)).not.toBeChecked();
+});

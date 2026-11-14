@@ -237,14 +237,11 @@
     return chips;
   });
 
-  let sheetOpen = $state(false);
-
   function removeFilter(patch) {
     onchange({ ...query, offset: 0, ...patch });
   }
 
   function clearFilters() {
-    sheetOpen = false;
     onchange({
       ...query,
       offset: 0,
@@ -257,23 +254,11 @@
     });
   }
 
-  // Choosing a facet is the only reason the sheet exists, so it closes on the
-  // choice: the point is to see the results change.
+  // The panel closes its own sheet on a phone (that is the block's job now);
+  // choosing a facet only has to mean "re-run the search".
   function facetChange(next) {
-    sheetOpen = false;
     onchange(next);
   }
-
-  // The sheet owns the screen while it is open; letting the page scroll behind it
-  // makes a phone feel broken rather than busy.
-  $effect(() => {
-    if (!sheetOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  });
 
   // The API pages by article (`group=article`): one row per article, its other
   // matching passages folded under the best-ranked one. So the pager and the
@@ -376,19 +361,13 @@
 {/if}
 
 {#if intent}
-  <div class="layout" class:sheet-open={sheetOpen}>
-    <!-- Phone only: filters as chips, directly above the results, where the reader
-       is. On a wide screen this row is hidden and the panel sits beside them. -->
-    {#if response}
+  <div class="layout">
+    <!-- The applied filters, as chips you can take off one at a time. The way
+         *in* to the panel is the block's own chip row now, which is sticky on a
+         phone; this row is what you have chosen. Phone only: on a wide screen the
+         panel is beside the results and each facet shows its own selection. -->
+    {#if response && activeFilters.length}
       <div class="chipsrow">
-        <button
-          class="chip filters"
-          type="button"
-          onclick={() => (sheetOpen = true)}
-        >
-          filters{activeFilters.length ? ` (${activeFilters.length})` : ""}
-          <span class="caret" aria-hidden="true">▾</span>
-        </button>
         {#each activeFilters as chip (chip.key)}
           <button
             class="chip on"
@@ -400,11 +379,9 @@
             <span class="sr">— remove filter</span>
           </button>
         {/each}
-        {#if activeFilters.length}
-          <button class="chip clear" type="button" onclick={clearFilters}
-            >clear all</button
-          >
-        {/if}
+        <button class="chip clear" type="button" onclick={clearFilters}
+          >clear all</button
+        >
       </div>
     {/if}
 
@@ -481,38 +458,18 @@
       {/if}
     </section>
 
-    <div class="facetwrap" class:open={sheetOpen}>
-      <div class="sheethead">
-        <span class="micro">filters</span>
-        <button class="chip clear" type="button" onclick={clearFilters}
-          >clear all</button
-        >
-        <button
-          class="chip done"
-          type="button"
-          onclick={() => (sheetOpen = false)}>done</button
-        >
-      </div>
+    <aside class="facetwrap">
       <Facets
         facets={response?.facets ?? null}
         {query}
         onchange={facetChange}
+        onclear={clearFilters}
       />
-    </div>
+    </aside>
   </div>
 {:else}
   <!-- Nothing asked yet: the one screen that had no way in. -->
   <StartingPoint {query} {onchange} />
-{/if}
-
-{#if sheetOpen}
-  <!-- Tapping the dimmed results behind the sheet is the other way out. -->
-  <button
-    class="scrim"
-    type="button"
-    aria-label="Close filters"
-    onclick={() => (sheetOpen = false)}
-  ></button>
 {/if}
 
 <style>
@@ -578,25 +535,12 @@
     border-style: dashed;
     color: var(--ink-muted);
   }
-  .chip.done {
-    margin-left: auto;
-    color: #fff;
-    border-color: var(--line-strong);
-  }
-  .chip .caret {
-    font-size: 9px;
-    color: var(--ink-faint);
-  }
-  /* A button that reads as a link, for advice inside a notice. */
   .facetwrap {
     display: block;
     min-width: 0;
-  }
-  .sheethead {
-    display: none;
-  }
-  .scrim {
-    display: none;
+    position: sticky;
+    top: 56px;
+    align-self: start;
   }
   .sr {
     position: absolute;
@@ -626,6 +570,15 @@
       grid-template-columns: minmax(0, 1fr);
       gap: 18px;
     }
+    /* One column: the panel goes *above* the results rather than below them.
+       Below, it was 4,016px down the page — 4.8 phone screens past the first
+       result — which is the difference between "filters exist" and "filters are
+       reachable". Under 600px the panel turns into a chip row and a sheet, and
+       this is what puts that row at the top. */
+    .facetwrap {
+      order: -1;
+      position: static;
+    }
   }
   @media (max-width: 600px) {
     /* Same height on both controls so the row reads as one bar, and 40px is the
@@ -644,83 +597,37 @@
     }
   }
   /* ---- phone layout -------------------------------------------------------
-     Below 600px the facet panel leaves the flow entirely: it becomes a sheet
-     raised from the bottom, and a sticky chip row above the results carries the
-     filters the reader has actually applied. This is the difference between
-     "filters exist" and "filters are reachable" — as a stacked column it began
-     4,016px down the page, which is 4.8 phone screens past the first result. */
+     Below 600px FilterPanel stops being a panel and becomes a sticky chip row
+     that opens a bottom sheet. That is the block's own mobile behaviour, so this
+     app no longer carries a second one. The aside still has to *come first*:
+     stacked under the results, its chip row began 4,016px down the page, which
+     is 4.8 phone screens past the first result. `order` moves the row, not the
+     panel — the panel is fixed once it is open. */
   @media (max-width: 600px) {
-    .chipsrow {
+    /* The chip row lives inside the block, and the block's styles are its own,
+       so reach it from the column that holds it. Sticky at the header's height
+       is what keeps the filters one tap away while the results scroll. */
+    .facetwrap :global(.mobile-chip-row) {
       position: sticky;
       top: 50px; /* height of the sticky header above it */
       z-index: 5;
-      display: flex;
-      gap: 6px;
       margin: 0 -12px;
       padding: 7px 12px;
-      overflow-x: auto;
       background: rgba(15, 23, 42, 0.93);
       backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--line);
+    }
+    /* The applied filters, under the way in. Not sticky: one sticky row is what
+       keeps the bar thin, and the row can be several chips deep. */
+    .chipsrow {
+      margin: 0 -12px;
+      padding: 7px 12px;
+      overflow-x: auto;
       scrollbar-width: none;
+      border-bottom: 1px solid var(--line);
     }
     .chipsrow::-webkit-scrollbar {
       display: none;
-    }
-    .facetwrap {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 20;
-      max-height: 72vh;
-      padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-      overflow-y: auto;
-      background: var(--bg);
-      border-top: 1px solid var(--line-strong);
-      border-radius: 12px 12px 0 0;
-      transform: translateY(101%);
-      transition: transform 180ms ease;
-    }
-    .facetwrap.open {
-      transform: none;
-    }
-    .facetwrap .facets {
-      position: static;
-      top: auto;
-    }
-    .sheethead {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    /* The sheet's own escape hatches get a 44px thumb target. The painted pill
-       stays 34px so the sheet head does not grow; the row below it scrolls, so
-       this is the one place where the target can grow without being clipped. */
-    .sheethead .chip {
-      position: relative;
-      height: 34px;
-    }
-    .sheethead .chip::after {
-      content: "";
-      position: absolute;
-      inset: -5px -4px;
-      border-radius: inherit;
-    }
-    .scrim {
-      display: block;
-      position: fixed;
-      inset: 0;
-      z-index: 19;
-      padding: 0;
-      background: rgba(15, 23, 42, 0.6);
-      border: 0;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .facetwrap {
-      transition: none;
     }
   }
 </style>

@@ -14,6 +14,23 @@
    * payload to `facets` and a mapper to `adaptFacets`, and the panel owns the
    * conversion. Kept as a prop rather than a second accepted shape so the
    * contract stays one shape with one place that deviates from it.
+   *
+   * Three additions in 1.7.0, from the one screen that still could not use the
+   * panel -- stratechery-search's year filter:
+   *
+   *   `facet.mode`   -- `"multiple"` (default, checkboxes) or `"single"`, which
+   *       is one choice from N: a year, an "images / text only" toggle. Radios,
+   *       and choosing the active option clears it, because a single-select
+   *       facet with no way back is a trap.
+   *   `facet.layout` -- `"list"` (default) or `"bars"`, which draws each
+   *       option's `count` as a bar behind its label. A histogram is not a
+   *       decoration on a year filter: it is how you see that the archive
+   *       starts thin in 2018 before choosing a range.
+   *   `facet.note`   -- one line under the group ("1,614 passages across two
+   *       kinds"), because a count per option does not say what it counts.
+   *
+   * The shape stays `[{ key, label, options: [{ value, label, count }] }]`: the
+   * three are facet fields with defaults, not new props.
    */
   let {
     facets = [],
@@ -29,6 +46,28 @@
 
   function isChecked(groupKey, value) {
     return (selected[groupKey] ?? []).includes(value);
+  }
+
+  // A single-select facet is one choice from N. Clicking the active one clears
+  // it -- otherwise a range that matches nothing has no way back except "clear",
+  // which throws away every other facet too.
+  function choose(facet, value) {
+    if (facet.mode !== "single") {
+      toggle(facet.key, value);
+      return;
+    }
+    const updated = { ...selected };
+    if (isChecked(facet.key, value)) delete updated[facet.key];
+    else updated[facet.key] = [value];
+    onchange?.(updated);
+  }
+
+  // Bars are relative to the largest option in their own group: the question a
+  // histogram answers is "how does this year compare with the others", not "how
+  // many passages exist in total".
+  function barWidth(facet, option) {
+    const max = Math.max(1, ...facet.options.map((o) => o.count ?? 0));
+    return `${Math.round(((option.count ?? 0) / max) * 100)}%`;
   }
 
   function toggle(groupKey, value) {
@@ -95,13 +134,24 @@
     {#each groups as facet}
       <div class="facet-group">
         <div class="facet-label micro">{facet.label}</div>
-        <div class="facet-options">
+        <div class="facet-options" class:bars={facet.layout === "bars"}>
           {#each facet.options as opt}
             <label class="facet-option">
+              {#if facet.layout === "bars"}
+                <span
+                  class="option-bar"
+                  style="--w: {barWidth(facet, opt)}"
+                  aria-hidden="true"
+                ></span>
+              {/if}
+              <!-- A radio, not a checkbox with single-select behaviour bolted
+                   on: the control should say what it does, and screen readers
+                   announce the set as one group. -->
               <input
-                type="checkbox"
+                type={facet.mode === "single" ? "radio" : "checkbox"}
+                name={facet.mode === "single" ? `nb-facet-${facet.key}` : undefined}
                 checked={isChecked(facet.key, opt.value)}
-                onchange={() => toggle(facet.key, opt.value)}
+                onclick={() => choose(facet, opt.value)}
               />
               <span class="option-label">{opt.label}</span>
               {#if opt.count !== undefined}
@@ -110,6 +160,9 @@
             </label>
           {/each}
         </div>
+        {#if facet.note}
+          <p class="facet-note hint">{facet.note}</p>
+        {/if}
       </div>
     {/each}
   </div>
@@ -183,6 +236,7 @@
   }
 
   .facet-option {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -190,6 +244,34 @@
     cursor: pointer;
     color: var(--ink-dim);
     padding: 2px 0;
+  }
+
+  /* The histogram sits under the row rather than beside it, so label and count
+     keep the same columns as every other facet. */
+  .bars .facet-option {
+    padding: 3px 5px;
+    border-radius: 4px;
+  }
+
+  .option-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--w);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: 4px;
+  }
+
+  .option-bar + input,
+  .option-bar ~ .option-label,
+  .option-bar ~ .option-count {
+    position: relative;
+  }
+
+  .facet-note {
+    margin: 0;
+    font-size: 10.5px;
   }
 
   .facet-option:hover {
