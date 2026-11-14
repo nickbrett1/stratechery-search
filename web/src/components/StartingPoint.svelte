@@ -285,7 +285,8 @@
       {data.searchable_articles.toLocaleString()} searchable articles, {data.first.slice(
         0,
         4,
-      )} → {data.last.slice(0, 4)}. A year or a kind is enough on its own.
+      )} → {data.last.slice(0, 4)}. Pick a year or a kind to browse — no query
+      needed.
     </p>
   {/if}
 </section>
