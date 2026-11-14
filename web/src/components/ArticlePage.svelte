@@ -1,5 +1,6 @@
 <script>
   import { article, similar } from "../lib/api.js";
+  import ResultList from "../lib/components/nb/ResultList.svelte";
   import {
     displaySubject,
     highlightParts,
@@ -61,6 +62,30 @@
     const target = document.getElementById(hash.slice(1));
     if (target) target.scrollIntoView({ block: "center" });
   });
+
+  // "Elsewhere" as the house ranked list: the distance and the kind pill stay,
+  // because they are what makes the list checkable in two seconds, but the row
+  // shape is the published one rather than a local <ol>.
+  const nearItems = $derived(
+    (neighbours?.results ?? []).map((near) => {
+      const detail = [
+        near.sent_at.slice(0, 10),
+        `distance ${near.distance.toFixed(3)}`,
+      ];
+      if (near.more_passages > 0) {
+        detail.push(
+          `${near.matched_passages} of this article's passages matched`,
+        );
+      }
+      return {
+        href: near.article_href,
+        title: displaySubject(near.subject),
+        pill: { label: kindLabel(near.kind), tone: "info" },
+        meta: detail.join(" · "),
+        snippet: `${near.excerpt}…`,
+      };
+    }),
+  );
 
   const chunkRanges = $derived(data?.chunks ?? []);
 
@@ -172,31 +197,15 @@
        would be a claim about the corpus, which the project excludes. -->
   {#if neighbours?.results?.length}
     <section class="elsewhere">
-      <h2 class="micro">Elsewhere in the archive</h2>
       <p class="hint">
         Nearest passages by embedding, best first. Nothing here is a judgement
         about what the article is <em>about</em>.
       </p>
-      <ol class="near">
-        {#each neighbours.results as near (near.chunk_id)}
-          <li>
-            <a class="near-head" href={near.article_href}>
-              <span class="num date">{near.sent_at.slice(0, 10)}</span>
-              <span class="near-subject">{displaySubject(near.subject)}</span>
-            </a>
-            <p class="near-excerpt">{near.excerpt}…</p>
-            <p class="hint near-meta">
-              <span class="pill info kind">{kindLabel(near.kind)}</span>
-              <span class="num">distance {near.distance.toFixed(3)}</span>
-              {#if near.more_passages > 0}
-                <span class="num"
-                  >{near.matched_passages} of this article's passages matched</span
-                >
-              {/if}
-            </p>
-          </li>
-        {/each}
-      </ol>
+      <ResultList
+        title="Elsewhere in the archive"
+        items={nearItems}
+        initialCount={5}
+      />
     </section>
   {/if}
 {/if}
@@ -304,49 +313,6 @@
     margin-top: 28px;
     border-top: 1px solid var(--line);
     padding-top: 14px;
-  }
-  .elsewhere h2 {
-    margin: 0 0 4px;
-    color: var(--ink);
-    font-weight: 600;
-  }
-  .near {
-    list-style: none;
-    margin: 12px 0 0;
-    padding: 0;
-  }
-  .near li {
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    padding: 9px 11px;
-    margin-bottom: 8px;
-    background: var(--bg-raised);
-  }
-  .near-head {
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-    font-size: 13px;
-    color: var(--ink);
-  }
-  .near-head:hover .near-subject {
-    color: var(--accent);
-  }
-  .near-subject {
-    font-weight: 500;
-  }
-  .near-excerpt {
-    margin: 4px 0 6px;
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: var(--ink-muted);
-  }
-  .near-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin: 0;
   }
   @media (max-width: 600px) {
     .head h1 {

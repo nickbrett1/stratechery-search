@@ -3,6 +3,8 @@
   import { remember } from "../lib/recent.js";
   import Facets from "./Facets.svelte";
   import ResultCard from "./ResultCard.svelte";
+  import EmptyState from "../lib/components/nb/EmptyState.svelte";
+  import StatStrip from "../lib/components/nb/StatStrip.svelte";
   import StartingPoint from "./StartingPoint.svelte";
 
   let { query, onchange } = $props();
@@ -276,6 +278,46 @@
   // matching passages folded under the best-ranked one. So the pager and the
   // "showing" range count articles, while the total stays a count of passages —
   // which is the number that tells the reader how much text matched.
+  // The tally as the house KPI row. The counting rules are unchanged and
+  // deliberately not flattened into one number: browsing has no match, so
+  // "passages" would count every chunk in the range and mean nothing, and a
+  // hybrid query ranks a fused window out of everything BM25 matched - either
+  // number alone lies.
+  const tally = $derived.by(() => {
+    if (!response) return [];
+    const rows = [];
+    if (response.browse) {
+      rows.push({
+        label: "articles",
+        value: response.article_total.toLocaleString(),
+        sub: "newest first",
+      });
+    } else if (response.hybrid?.enabled) {
+      rows.push({
+        label: "ranked",
+        value: response.hybrid.fused.toLocaleString(),
+        sub: `of ${response.total.toLocaleString()} passages`,
+      });
+    } else {
+      rows.push({
+        label: "passages",
+        value: response.total.toLocaleString(),
+        sub: `in ${(response.article_total ?? response.results.length).toLocaleString()} articles`,
+      });
+    }
+    rows.push({
+      label: "showing",
+      value: `${pageStart}–${pageEnd}`,
+      sub: "this page",
+    });
+    rows.push({
+      label: "took",
+      value: `${response.took_ms} ms`,
+      sub: "server time",
+    });
+    return rows;
+  });
+
   const pageStart = $derived((response?.offset ?? 0) + 1);
   const pageEnd = $derived(
     (response?.offset ?? 0) + (response?.results.length ?? 0),
@@ -367,35 +409,7 @@
 
     <section class="results" class:loading>
       {#if response}
-        <div class="tally">
-          {#if response.browse}
-            <!-- Browsing has no match, so "passages" would count every chunk of
-               every article in the range and mean nothing to the reader. -->
-            <span
-              ><b class="num">{response.article_total.toLocaleString()}</b>
-              articles</span
-            >
-            <span class="hint num">newest first</span>
-          {:else if response.hybrid?.enabled}
-            <!-- Hybrid ranks a fused candidate set, which the window caps, out of
-               every passage BM25 matched. Both numbers, because either alone
-               lies: "86" says nothing about the corpus, "1,131" says nothing
-               about how many of them were actually ranked. -->
-            <span
-              ><b class="num">{response.hybrid.fused.toLocaleString()}</b> of
-              <b class="num">{response.total.toLocaleString()}</b> passages</span
-            >
-          {:else}
-            <span
-              ><b class="num">{response.total.toLocaleString()}</b> passages</span
-            >
-            <span class="hint num"
-              >in {response.article_total ?? response.results.length} articles</span
-            >
-          {/if}
-          <span class="hint num">showing {pageStart}–{pageEnd}</span>
-          <span class="pill info num">{response.took_ms} ms</span>
-        </div>
+        <StatStrip stats={tally} />
         <div class="cards">
           {#each response.results as result (result.chunk_id)}
             <ResultCard
@@ -408,23 +422,29 @@
         </div>
         {#if response.results.length === 0}
           <!-- Advice has to match the cause: a filter that excludes everything is
-             not fixed by typing fewer words. -->
+             not fixed by typing fewer words, and a range with nothing in it is
+             not a query at all. The block is the same one the registry
+             publishes; the wording still comes from here. -->
           {#if response.browse}
-            <p class="notice">
-              Nothing in this range.
-              <button class="inline" type="button" onclick={clearFilters}
-                >clear filters</button
-              >
-            </p>
+            <EmptyState
+              cause="filters"
+              customMessage="Nothing in this range."
+              onclear={clearFilters}
+            />
           {:else if activeFilters.length}
-            <p class="notice">
-              No passages match with these filters.
-              <button class="inline" type="button" onclick={clearFilters}
-                >clear filters</button
-              >
-            </p>
+            <!-- The block supplies the shape and the clear action; the sentence
+               stays this project's, because it is contract copy: a filter that
+               excludes everything is not fixed by typing fewer words. -->
+            <EmptyState
+              cause="filters"
+              customMessage="No passages match with these filters."
+              onclear={clearFilters}
+            />
           {:else}
-            <p class="notice">No passages match. Try fewer words.</p>
+            <EmptyState
+              cause="query"
+              customMessage="No passages match. Try fewer words."
+            />
           {/if}
         {/if}
         <nav class="seg pager">
@@ -558,16 +578,6 @@
     color: var(--ink-faint);
   }
   /* A button that reads as a link, for advice inside a notice. */
-  .inline {
-    padding: 0;
-    font: inherit;
-    color: var(--accent);
-    background: none;
-    border: 0;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
   .facetwrap {
     display: block;
     min-width: 0;
@@ -588,19 +598,6 @@
   }
   .results.loading {
     opacity: 0.55;
-  }
-  .tally {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--line);
-    font-size: 12px;
-    color: var(--ink-muted);
-  }
-  .tally b {
-    color: var(--ink);
-    font-weight: 600;
   }
   .cards {
     display: flex;

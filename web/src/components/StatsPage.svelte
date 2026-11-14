@@ -1,6 +1,8 @@
 <script>
   import { stats } from "../lib/api.js";
   import { groupKinds } from "../lib/display.js";
+  import StatStrip from "../lib/components/nb/StatStrip.svelte";
+  import StatusView from "../lib/components/nb/StatusView.svelte";
 
   let data = $state(null);
   let error = $state(null);
@@ -22,6 +24,46 @@
   // daily + update are one product under two names (see lib/display.js): the
   // corpus is 1,058 daily updates, not 502 of one thing and 556 of another.
   const kinds = $derived(groupKinds(data?.by_kind ?? []));
+
+  // The KPI row is the house block, not a local grid: the shape (micro label,
+  // big tabular figure, footnote) is the one the registry publishes, so this
+  // page and a portfolio page are the same component with different data.
+  const kpis = $derived([
+    {
+      label: "articles",
+      value: data?.articles.toLocaleString() ?? "—",
+      sub: `${data?.searchable_articles.toLocaleString() ?? "—"} searchable`,
+    },
+    {
+      label: "passages",
+      value: data?.chunks.toLocaleString() ?? "—",
+      sub: "indexed in FTS5",
+    },
+    {
+      label: "images",
+      value: data?.images.distinct_assets.toLocaleString() ?? "—",
+      sub: `${data?.images.articles_with_images.toLocaleString() ?? "—"} articles`,
+    },
+    {
+      label: "transactional",
+      value: data?.transactional ?? "—",
+      sub: "access codes, receipts, renewals — never searched",
+    },
+  ]);
+
+  // One lane, one row per kind: the block carries the count in the head and a
+  // pill per row, which is the same shape a status board uses.
+  const kindCards = $derived([
+    {
+      title: "by kind",
+      count: data?.articles ?? 0,
+      tone: "info",
+      rows: kinds.map((bucket) => ({
+        title: bucket.label,
+        pill: { label: bucket.articles.toLocaleString(), tone: "info" },
+      })),
+    },
+  ]);
 
   const maxYear = $derived(
     Math.max(1, ...(data?.by_year ?? []).map((bucket) => bucket.articles)),
@@ -59,32 +101,7 @@
 
   <!-- The house stat card: micro-label, big tabular figure, footnote. Same shape
        as a deepseek-balance .card, so the two read as one product family. -->
-  <div class="topcards">
-    <div class="card">
-      <div class="t micro">articles</div>
-      <div class="v num">{data.articles.toLocaleString()}</div>
-      <div class="s num">
-        {data.searchable_articles.toLocaleString()} searchable
-      </div>
-    </div>
-    <div class="card">
-      <div class="t micro">passages</div>
-      <div class="v num">{data.chunks.toLocaleString()}</div>
-      <div class="s">indexed in FTS5</div>
-    </div>
-    <div class="card">
-      <div class="t micro">images</div>
-      <div class="v num">{data.images.distinct_assets.toLocaleString()}</div>
-      <div class="s num">
-        {data.images.articles_with_images.toLocaleString()} articles
-      </div>
-    </div>
-    <div class="card">
-      <div class="t micro">transactional</div>
-      <div class="v num">{data.transactional}</div>
-      <div class="s">access codes, receipts, renewals — never searched</div>
-    </div>
-  </div>
+  <StatStrip stats={kpis} />
 
   <!-- A note can still appear — the indexer flags a year that is short *after*
        the daily update began reaching the archive, which the caption below
@@ -124,18 +141,7 @@
        @stratechery.com addresses over 1,691 articles: a breakdown of the
        newsletter plumbing, not of the writing. By kind is the one a reader can
        act on. -->
-  <div class="card kindex">
-    <h3>By kind</h3>
-    <ul>
-      {#each kinds as bucket (bucket.id)}
-        <li>
-          <span>{bucket.label}</span><span class="count num"
-            >{bucket.articles}</span
-          >
-        </li>
-      {/each}
-    </ul>
-  </div>
+  <StatusView cards={kindCards} />
 
   <p class="hint footer">
     <a href="/">← search</a> · <a href="/healthz">/healthz</a> ·
@@ -154,30 +160,11 @@
   .sub {
     margin: 0 0 14px;
   }
-  .topcards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 8px;
-  }
-  .topcards .card {
-    padding: 8px 10px;
-  }
-  .topcards .v {
-    font-size: 18px;
-    font-weight: 700;
-    margin-top: 2px;
-  }
-  .topcards .s {
-    font-size: 11px;
-    color: var(--ink-muted);
-    margin-top: 2px;
-  }
   .chart {
     padding: 10px 12px 8px;
     margin: 12px 0;
   }
-  .chart h3,
-  .kindex h3 {
+  .chart h3 {
     font-size: 12px;
     font-weight: 600;
     margin: 0 0 2px;
@@ -217,30 +204,6 @@
   .count {
     text-align: right;
     color: var(--ink-dim);
-  }
-  .kindex {
-    margin-top: 12px;
-    padding: 10px 12px;
-  }
-  .kindex ul {
-    list-style: none;
-    padding: 0;
-    margin: 6px 0 0;
-    font-size: 12px;
-  }
-  .kindex li {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 3px 0;
-    border-bottom: 1px solid var(--line);
-    color: var(--ink-dim);
-  }
-  .kindex li:last-child {
-    border-bottom: 0;
-  }
-  .kindex .count {
-    color: var(--ink-muted);
   }
   .notice {
     margin: 10px 0;
