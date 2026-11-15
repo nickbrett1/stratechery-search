@@ -18,6 +18,11 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="application-name" content="Stratechery Search" />
     <meta name="apple-mobile-web-app-title" content="Stratechery Search" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Opaque, not translucent: see the note in data-download's index.html.
+         This page had no status-bar style at all, which is what let the
+         system draw its own band over the header. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>Stratechery Search</title>
     <style>
       /* iOS standalone samples the top of the viewport and blurs what is under
@@ -37,7 +42,9 @@
             display: block;
             position: fixed;
             inset: 0 0 auto;
-            height: 11px; /* Must exceed WebKit's 10px thin-border threshold. */
+            /* 11px clears the 10px thin-border threshold; the inset is added
+               because the band WebKit composites over is the safe area. */
+            height: calc(11px + env(safe-area-inset-top, 0px));
             z-index: 100;
             pointer-events: none;
             background-color: inherit;

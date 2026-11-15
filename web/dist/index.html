@@ -18,8 +18,13 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="application-name" content="Stratechery Search" />
     <meta name="apple-mobile-web-app-title" content="Stratechery Search" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Opaque, not translucent: see the note in data-download's index.html.
+         This page had no status-bar style at all, which is what let the
+         system draw its own band over the header. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>Stratechery Search</title>
-    <style>.pwa-status-bar-surface{display:none}@supports (-webkit-touch-callout:none) and ((-webkit-background-clip:text) or (background-clip:text)){@media (display-mode:standalone){.pwa-status-bar-surface{z-index:100;pointer-events:none;background-color:inherit;-webkit-background-clip:text;background-clip:text;height:11px;display:block;position:fixed;inset:0 0 auto}}}</style>
+    <style>.pwa-status-bar-surface{display:none}@supports (-webkit-touch-callout:none) and ((-webkit-background-clip:text) or (background-clip:text)){@media (display-mode:standalone){.pwa-status-bar-surface{height:calc(11px + env(safe-area-inset-top,0px));z-index:100;pointer-events:none;background-color:inherit;-webkit-background-clip:text;background-clip:text;display:block;position:fixed;inset:0 0 auto}}}</style>
     <script type="module" crossorigin src="/assets/index-DsapRTjX.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-B32a8eJX.css">
   </head>
